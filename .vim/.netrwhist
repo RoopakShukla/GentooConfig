@@ -1,0 +1,12 @@
+let g:netrw_dirhistmax  =10
+let g:netrw_dirhistcnt =3
+let g:netrw_dirhist_3='/home/roopa/.config/roopa-nvim'
+let g:netrw_dirhist_2='/home/roopa/.config/roopa-nvim/plugins'
+let g:netrw_dirhist_1='/home/roopa/.config/roopa-nvim'
+let g:netrw_dirhist_0='/home/roopa/.config/roopa-nvim/config'
+let g:netrw_dirhist_9='/home/roopa/.config/roopa-nvim'
+let g:netrw_dirhist_8='/home/roopa/Desktop/linux-desktop/Desktop/general-padhai/PDSA'
+let g:netrw_dirhist_7='/home/roopa/.vim'
+let g:netrw_dirhist_6='/home/roopa/.vim/plugged'
+let g:netrw_dirhist_5='/home/roopa/.vim/plugged/vim'
+let g:netrw_dirhist_4='/home/roopa/.vim/plugged/vim/colortemplate'

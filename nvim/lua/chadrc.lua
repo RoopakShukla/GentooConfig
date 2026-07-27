@@ -24,6 +24,11 @@ M.ui = {
      },
 }
 
+M.colorify = {
+    enabled = true,
+    mode = "bg",
+}
+
 M.lsp = { signature = true}
 
 return M

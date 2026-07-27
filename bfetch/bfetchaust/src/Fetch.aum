@@ -1,0 +1,402 @@
+import BfetchAust.Posix (
+    stdout_fd
+);
+import BfetchAust.FastIO (
+    ByteBuf,
+    makeByteBuf,
+    destroyByteBuf,
+    data,
+    appendByte,
+    appendSpan,
+    appendCString,
+    appendIndexDecimal,
+    writeAll
+);
+import BfetchAust.Sys (
+    SystemType,
+    BedrockMode,
+    GentooMode,
+    CachyMode,
+    OtherMode,
+    getDistroAndType,
+    getKernel,
+    getUptime,
+    getMemory,
+    getWm,
+    getTerminal,
+    getShell,
+    getPackages,
+    getCpu,
+    getGpu
+);
+
+module body BfetchAust.Fetch is
+    constant c_reset: Index := 0;
+    constant c_bold: Index := 1;
+    constant c_nord0: Index := 30;
+    constant c_nord1: Index := 90;
+    constant c_nord3: Index := 97;
+    constant c_nord4: Index := 97;
+    constant c_nord7: Index := 36;
+    constant c_nord8: Index := 96;
+    constant c_nord9: Index := 34;
+    constant c_nord10: Index := 94;
+    constant c_nord11: Index := 91;
+    constant c_nord12: Index := 93;
+    constant c_nord13: Index := 33;
+    constant c_nord14: Index := 32;
+    constant c_nord15: Index := 95;
+
+    function spanEquals(left: Span[Nat8, Static], right: Span[Nat8, Static]): Bool is
+        let left_len: Index := spanLength(left);
+        let right_len: Index := spanLength(right);
+        if left_len /= right_len then
+            return false;
+        end if;
+        if left_len > (0 : Index) then
+            for i from 0 to left_len - 1 do
+                if left[i] /= right[i] then
+                    return false;
+                end if;
+            end for;
+        end if;
+        return true;
+    end;
+
+    generic [R: Region]
+    function ansi(out: &![ByteBuf, R], code: Index): Unit is
+        appendByte(&~out, 27 : Nat8);
+        appendByte(&~out, '[');
+        appendIndexDecimal(&~out, code);
+        appendByte(&~out, 'm');
+        return nil;
+    end;
+
+    generic [R: Region, S: Region]
+    function styled(out: &![ByteBuf, R], code: Index, text: Span[Nat8, S]): Unit is
+        ansi(&~out, code);
+        appendSpan(&~out, text);
+        return nil;
+    end;
+
+    generic [R: Region, S: Region]
+    function styled2(out: &![ByteBuf, R], code0: Index, code1: Index, text: Span[Nat8, S]): Unit is
+        ansi(&~out, code0);
+        ansi(&~out, code1);
+        appendSpan(&~out, text);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function nl(out: &![ByteBuf, R]): Unit is
+        appendByte(&~out, 10 : Nat8);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function backslashes(out: &![ByteBuf, R], count: Index): Unit is
+        if count > (0 : Index) then
+            for i from 1 to count do
+                appendByte(&~out, '\\');
+            end for;
+        end if;
+        return nil;
+    end;
+
+    generic [R: Region, S: Region]
+    function appendValue(out: &![ByteBuf, R], value: &[ByteBuf, S]): Unit is
+        appendCString(&~out, data(value));
+        return nil;
+    end;
+
+    generic [R: Region]
+    function styledBackslashes(out: &![ByteBuf, R], code0: Index, code1: Index, count: Index): Unit is
+        ansi(&~out, code0);
+        ansi(&~out, code1);
+        backslashes(&~out, count);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function coloredBackslashes(out: &![ByteBuf, R], code: Index, count: Index): Unit is
+        ansi(&~out, code);
+        backslashes(&~out, count);
+        return nil;
+    end;
+
+    generic [R: Region, S: Region]
+    function styledTrailBackslashes(out: &![ByteBuf, R], code: Index, text: Span[Nat8, S], count: Index): Unit is
+        styled(&~out, code, text);
+        backslashes(&~out, count);
+        return nil;
+    end;
+
+    generic [R: Region, S: Region]
+    function styled2TrailBackslashes(out: &![ByteBuf, R], code0: Index, code1: Index, text: Span[Nat8, S], count: Index): Unit is
+        styled2(&~out, code0, code1, text);
+        backslashes(&~out, count);
+        return nil;
+    end;
+
+    generic [R: Region, S: Region]
+    function fieldLine(
+        out: &![ByteBuf, R],
+        bar_code: Index,
+        bar_text: Span[Nat8, Static],
+        label_code: Index,
+        label: Span[Nat8, Static],
+        value: &[ByteBuf, S]
+    ): Unit is
+        styled2(&~out, c_reset, c_bold, " │");
+        styled(&~out, bar_code, bar_text);
+        styled2(&~out, c_reset, c_bold, "│ ");
+        styled(&~out, label_code, label);
+        ansi(&~out, c_nord4);
+        appendValue(&~out, value);
+        nl(&~out);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function tailLine(out: &![ByteBuf, R]): Unit is
+        styled2(&~out, c_reset, c_bold, " └──┘");
+        ansi(&~out, c_reset);
+        nl(&~out);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function appendHelp(out: &![ByteBuf, R]): Unit is
+        appendSpan(&~out, "Usage: ./bfetch [OPTIONS]");
+        nl(&~out);
+        appendSpan(&~out, "Options:");
+        nl(&~out);
+        appendSpan(&~out, "  -v, --version    Show version");
+        nl(&~out);
+        appendSpan(&~out, "  -h, --Help       Show this help");
+        nl(&~out);
+        appendSpan(&~out, "  --gentoo         Force Gentoo mode");
+        nl(&~out);
+        appendSpan(&~out, "  --cachyos        Force CachyOS mode");
+        nl(&~out);
+        appendSpan(&~out, "  --bedrock        Force Bedrock mode");
+        nl(&~out);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function appendVersion(out: &![ByteBuf, R]): Unit is
+        appendSpan(&~out, "bfetch version 2.4.0-fastasf");
+        nl(&~out);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function gentooArt(out: &![ByteBuf, R]): Unit is
+        styled2(&~out, c_reset, c_bold, " ┌──┐"); styled(&~out, c_nord1, " ┌──────────────────────────────────┐ "); styled2(&~out, c_nord15, c_bold, "┌─────┐"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord1, "▒▒"); styled2(&~out, c_reset, c_bold, "│"); styled(&~out, c_nord1, " │─────────"); styledBackslashes(&~out, c_reset, c_bold, 10 : Index); styled(&~out, c_nord1, "───────────────│ "); styled2(&~out, c_nord15, c_bold, "│  G  │"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord0, "██"); styled2(&~out, c_reset, c_bold, "│"); styled(&~out, c_nord1, " │───────"); styled2TrailBackslashes(&~out, c_reset, c_bold, "//+++++++++++", 1 : Index); styled(&~out, c_nord1, "─────────────│ "); styled2(&~out, c_nord15, c_bold, "│  e  │"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord1, "██"); styled2(&~out, c_reset, c_bold, "│"); styled(&~out, c_nord1, " │──────"); styled2(&~out, c_reset, c_bold, "//+++++"); styledBackslashes(&~out, c_nord1, c_bold, 3 : Index); styled2TrailBackslashes(&~out, c_reset, c_bold, "+++++", 1 : Index); styled(&~out, c_nord1, "────────────│ "); styled2(&~out, c_nord15, c_bold, "│  n  │"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord11, "██"); styled2(&~out, c_reset, c_bold, "│"); styled(&~out, c_nord1, " │─────"); styled2(&~out, c_reset, c_bold, "//+++++"); styled2(&~out, c_nord1, c_bold, "// "); styled(&~out, c_reset, "/"); styled2TrailBackslashes(&~out, c_reset, c_bold, "+++++++", 1 : Index); styled(&~out, c_nord1, "──────────│ "); styled2(&~out, c_nord15, c_bold, "│  t  │"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord12, "██"); styled2(&~out, c_reset, c_bold, "│"); styled(&~out, c_nord1, " │──────"); styled2(&~out, c_reset, c_bold, "+++++++"); styledBackslashes(&~out, c_nord1, c_bold, 2 : Index); styled2TrailBackslashes(&~out, c_reset, c_bold, "++++++++++", 1 : Index); styled(&~out, c_nord1, "────────│ "); styled2(&~out, c_nord15, c_bold, "│  o  │"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord13, "██"); styled2(&~out, c_reset, c_bold, "│"); styled(&~out, c_nord1, " │────────"); styled2(&~out, c_reset, c_bold, "++++++++++++++++++"); styledBackslashes(&~out, c_nord1, c_bold, 2 : Index); styled(&~out, c_nord1, "──────│ "); styled2(&~out, c_nord15, c_bold, "│  o  │"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord14, "██"); styled2(&~out, c_reset, c_bold, "│"); styled(&~out, c_nord1, " │─────────"); styled2(&~out, c_reset, c_bold, "//++++++++++++++"); styled2(&~out, c_nord1, c_bold, "//"); styled(&~out, c_nord1, "───────│ "); styled2(&~out, c_nord15, c_bold, "└─────┘"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord7, "██"); styled2(&~out, c_reset, c_bold, "│"); styled(&~out, c_nord1, " │───────"); styled2(&~out, c_reset, c_bold, "//++++++++++++++"); styled2(&~out, c_nord1, c_bold, "//"); styled(&~out, c_nord1, "─────────│ "); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord8, "██"); styled2(&~out, c_reset, c_bold, "│"); styled(&~out, c_nord1, " │──── "); styled2(&~out, c_reset, c_bold, "//++++++++++++++"); styled2(&~out, c_nord1, c_bold, "//"); styled(&~out, c_nord1, "───────────│ "); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord9, "██"); styled2(&~out, c_reset, c_bold, "│"); styled(&~out, c_nord1, " │─────"); styled2(&~out, c_reset, c_bold, "//++++++++++"); styled2(&~out, c_nord1, c_bold, "//"); styled(&~out, c_nord1, "───────────────│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord10, "██"); styled2(&~out, c_reset, c_bold, "│"); styled(&~out, c_nord1, " │─────"); styled2(&~out, c_reset, c_bold, "//+++++++"); styled2(&~out, c_nord1, c_bold, "//"); styled(&~out, c_nord1, "──────────────────│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord15, "██"); styled2(&~out, c_reset, c_bold, "│"); styled(&~out, c_nord1, " │──────"); styled2(&~out, c_reset, c_bold, "////////"); styled2(&~out, c_nord1, c_bold, "────────────────────│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord7, "██"); styled2(&~out, c_reset, c_bold, "│"); styled(&~out, c_nord1, " └──────────────────────────────────┘"); nl(&~out);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function bedrockArt(out: &![ByteBuf, R]): Unit is
+        styled2(&~out, c_reset, c_bold, " ┌──┐"); styled2(&~out, c_nord1, c_bold, " ┌──────────────────────────────────┐ "); styled2(&~out, c_nord11, c_bold, "┌────┐"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord1, "▒▒"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │─"); styledBackslashes(&~out, c_reset, c_bold, 13 : Index); styled2(&~out, c_nord1, c_bold, "────────────────────│ "); styled2(&~out, c_nord11, c_bold, "│ 境 │"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord0, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │──"); styled2TrailBackslashes(&~out, c_reset, c_bold, "\\\\\\      ", 3 : Index); styled2(&~out, c_nord1, c_bold, "────────────────────│ "); styled2(&~out, c_nord11, c_bold, "│    │"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord1, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │───"); styled2TrailBackslashes(&~out, c_reset, c_bold, "\\\\\\      ", 3 : Index); styled2(&~out, c_nord1, c_bold, "───────────────────│ "); styled2(&~out, c_nord11, c_bold, "│ 界 │"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord11, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │────"); styled2TrailBackslashes(&~out, c_reset, c_bold, "\\\\\\      ", 17 : Index); styled2(&~out, c_nord1, c_bold, "────│ "); styled2(&~out, c_nord11, c_bold, "└────┘"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord12, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │─────"); styled2TrailBackslashes(&~out, c_reset, c_bold, "\\\\\\                    ", 3 : Index); styled2(&~out, c_nord1, c_bold, "───│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord13, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │──────"); styled2TrailBackslashes(&~out, c_reset, c_bold, "\\\\\\                    ", 3 : Index); styled2(&~out, c_nord1, c_bold, "──│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord14, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │───────"); styled2TrailBackslashes(&~out, c_reset, c_bold, "\\\\\\        ──────      ", 3 : Index); styled2(&~out, c_nord1, c_bold, "─│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord7, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │────────"); styled2(&~out, c_reset, c_bold, "\\\\\\                   ///"); styled2(&~out, c_nord1, c_bold, "─│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord8, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │─────────"); styled2(&~out, c_reset, c_bold, "\\\\\\                 ///"); styled2(&~out, c_nord1, c_bold, "──│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord9, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │──────────"); styled2(&~out, c_reset, c_bold, "\\\\\\               ///"); styled2(&~out, c_nord1, c_bold, "───│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord10, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │───────────"); styled2(&~out, c_reset, c_bold, "\\\\\\////////////////"); styled2(&~out, c_nord1, c_bold, "────│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord15, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " └──────────────────────────────────┘"); nl(&~out);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function cachyArt(out: &![ByteBuf, R]): Unit is
+        styled2(&~out, c_reset, c_bold, " ┌──┐"); styled2(&~out, c_nord1, c_bold, " ┌──────────────────────────────────┐ "); styled2(&~out, c_nord11, c_bold, "┌────┐"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord1, "▒▒"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │─────"); styled(&~out, c_nord7, "/"); styled(&~out, c_nord3, "--"); styled(&~out, c_nord4, "++++++++++"); styled(&~out, c_nord3, "----"); styled(&~out, c_nord7, "/"); styled2(&~out, c_nord1, c_bold, "───────────│ "); styled2(&~out, c_nord11, c_bold, "│ 境 │"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord0, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │────"); styled(&~out, c_nord7, "//"); styled(&~out, c_nord4, "+++++++++++"); styled(&~out, c_nord3, "----"); styled(&~out, c_nord7, "/"); styled2(&~out, c_nord1, c_bold, "─────"); styledTrailBackslashes(&~out, c_nord7, "/", 2 : Index); styled2(&~out, c_nord1, c_bold, "────│ "); styled2(&~out, c_nord11, c_bold, "│    │"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord1, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │───"); styled(&~out, c_nord7, "//"); styled(&~out, c_nord4, "++++++++++++++++"); styled2(&~out, c_nord1, c_bold, "──────"); styled(&~out, c_nord7, "\\//"); styled2(&~out, c_nord1, c_bold, "────│ "); styled2(&~out, c_nord11, c_bold, "│ 界 │"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord11, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │──"); styled(&~out, c_nord7, "//"); styled(&~out, c_nord4, "++"); styled(&~out, c_nord3, "---"); styled(&~out, c_nord4, "+"); styled(&~out, c_nord7, "//"); styled2(&~out, c_nord1, c_bold, "──────────────────────│ "); styled2(&~out, c_nord11, c_bold, "└────┘"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord12, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │─"); styled(&~out, c_nord7, "//"); styled(&~out, c_nord3, "---"); styled(&~out, c_nord4, "+++"); styled(&~out, c_nord7, "//"); styled2(&~out, c_nord1, c_bold, "────────────"); styledTrailBackslashes(&~out, c_nord7, "/+", 2 : Index); styled2(&~out, c_nord1, c_bold, "───────│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord13, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │─"); coloredBackslashes(&~out, c_nord7, 2 : Index); styled(&~out, c_nord4, "++++"); styled(&~out, c_nord3, "--"); styled(&~out, c_nord7, "/"); styled2(&~out, c_nord1, c_bold, "─────────────"); styled(&~out, c_nord7, "\\-//"); styled2(&~out, c_nord1, c_bold, "───────│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord14, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │──"); coloredBackslashes(&~out, c_nord7, 2 : Index); styled(&~out, c_nord3, "--"); styled(&~out, c_nord4, "+++"); coloredBackslashes(&~out, c_nord7, 1 : Index); styled2(&~out, c_nord1, c_bold, "──────────────────"); styledTrailBackslashes(&~out, c_nord7, "/++", 2 : Index); styled2(&~out, c_nord1, c_bold, "─│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord7, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │───"); coloredBackslashes(&~out, c_nord7, 2 : Index); styled(&~out, c_nord4, "+++"); styled(&~out, c_nord3, "--"); coloredBackslashes(&~out, c_nord7, 1 : Index); styled2(&~out, c_nord1, c_bold, "─────────────────"); styled(&~out, c_nord7, "\\--//"); styled2(&~out, c_nord1, c_bold, "─│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord8, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │────"); coloredBackslashes(&~out, c_nord7, 2 : Index); styled(&~out, c_nord3, "--"); styled(&~out, c_nord4, "++++"); styled(&~out, c_nord3, "-+"); styled(&~out, c_nord4, "---"); styled(&~out, c_nord4, "+"); styled(&~out, c_nord3, "--"); styled(&~out, c_nord4, "++++++"); styled(&~out, c_nord7, "/"); styled2(&~out, c_nord1, c_bold, "───────│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord9, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │─────"); coloredBackslashes(&~out, c_nord7, 1 : Index); styled(&~out, c_nord3, "--"); styled(&~out, c_nord4, "+++++++++++++++"); styled(&~out, c_nord3, "--"); styled(&~out, c_nord7, "/"); styled2(&~out, c_nord1, c_bold, "────────│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord10, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " │──────"); coloredBackslashes(&~out, c_nord7, 1 : Index); styled(&~out, c_nord3, "-"); styled(&~out, c_nord4, "++++++++++++"); styled(&~out, c_nord3, "----"); styled(&~out, c_nord7, "/"); styled2(&~out, c_nord1, c_bold, "─────────│"); nl(&~out);
+        styled2(&~out, c_reset, c_bold, " │"); styled(&~out, c_nord15, "██"); styled2(&~out, c_reset, c_bold, "│"); styled2(&~out, c_nord1, c_bold, " └──────────────────────────────────┘"); nl(&~out);
+        return nil;
+    end;
+
+    generic [R: Region, S: Region, T: Region, U: Region, V: Region, W: Region, X: Region, Y: Region, Z: Region, A0: Region, A1: Region]
+    function renderFetch(
+        out: &![ByteBuf, R],
+        ty: SystemType,
+        distro: &[ByteBuf, S],
+        kernel: &[ByteBuf, T],
+        uptime: &[ByteBuf, U],
+        wm: &[ByteBuf, V],
+        packages: &[ByteBuf, W],
+        terminal: &[ByteBuf, X],
+        memory: &[ByteBuf, Y],
+        shell: &[ByteBuf, Z],
+        cpu: &[ByteBuf, A0],
+        gpu: &[ByteBuf, A1]
+    ): Unit is
+        case ty of
+            when GentooMode do
+                gentooArt(&~out);
+                fieldLine(&~out, c_nord8, "██", c_nord12, "Distro: ", distro);
+                fieldLine(&~out, c_nord9, "██", c_nord12, "Kernel: ", kernel);
+                fieldLine(&~out, c_nord10, "██", c_nord15, "Uptime: ", uptime);
+                fieldLine(&~out, c_nord15, "██", c_nord15, "WM: ", wm);
+                fieldLine(&~out, c_nord11, "██", c_nord15, "Packages: ", packages);
+                fieldLine(&~out, c_nord12, "██", c_nord13, "Terminal: ", terminal);
+                fieldLine(&~out, c_nord13, "██", c_nord13, "Memory: ", memory);
+                fieldLine(&~out, c_nord14, "██", c_nord13, "Shell: ", shell);
+                fieldLine(&~out, c_nord7, "██", c_nord9, "CPU: ", cpu);
+                fieldLine(&~out, c_nord1, "▒▒", c_nord9, "GPU: ", gpu);
+            when CachyMode do
+                cachyArt(&~out);
+                fieldLine(&~out, c_nord7, "██", c_nord12, "Distro: ", distro);
+                fieldLine(&~out, c_nord8, "██", c_nord12, "Kernel: ", kernel);
+                fieldLine(&~out, c_nord9, "██", c_nord15, "Uptime: ", uptime);
+                fieldLine(&~out, c_nord10, "██", c_nord15, "WM: ", wm);
+                fieldLine(&~out, c_nord15, "██", c_nord15, "Packages: ", packages);
+                fieldLine(&~out, c_nord11, "██", c_nord13, "Terminal: ", terminal);
+                fieldLine(&~out, c_nord12, "██", c_nord13, "Memory: ", memory);
+                fieldLine(&~out, c_nord13, "██", c_nord13, "Shell: ", shell);
+                fieldLine(&~out, c_nord14, "██", c_nord9, "CPU: ", cpu);
+                fieldLine(&~out, c_nord1, "▒▒", c_nord9, "GPU: ", gpu);
+            when BedrockMode do
+                bedrockArt(&~out);
+                fieldLine(&~out, c_nord7, "██", c_nord12, "Distro: ", distro);
+                fieldLine(&~out, c_nord8, "██", c_nord12, "Kernel: ", kernel);
+                fieldLine(&~out, c_nord9, "██", c_nord15, "Uptime: ", uptime);
+                fieldLine(&~out, c_nord10, "██", c_nord15, "WM: ", wm);
+                fieldLine(&~out, c_nord15, "██", c_nord15, "Packages: ", packages);
+                fieldLine(&~out, c_nord11, "██", c_nord13, "Terminal: ", terminal);
+                fieldLine(&~out, c_nord12, "██", c_nord13, "Memory: ", memory);
+                fieldLine(&~out, c_nord13, "██", c_nord13, "Shell: ", shell);
+                fieldLine(&~out, c_nord14, "██", c_nord9, "CPU: ", cpu);
+                fieldLine(&~out, c_nord1, "▒▒", c_nord9, "GPU: ", gpu);
+            when OtherMode do
+                bedrockArt(&~out);
+                fieldLine(&~out, c_nord7, "██", c_nord12, "Distro: ", distro);
+                fieldLine(&~out, c_nord8, "██", c_nord12, "Kernel: ", kernel);
+                fieldLine(&~out, c_nord9, "██", c_nord15, "Uptime: ", uptime);
+                fieldLine(&~out, c_nord10, "██", c_nord15, "WM: ", wm);
+                fieldLine(&~out, c_nord15, "██", c_nord15, "Packages: ", packages);
+                fieldLine(&~out, c_nord11, "██", c_nord13, "Terminal: ", terminal);
+                fieldLine(&~out, c_nord12, "██", c_nord13, "Memory: ", memory);
+                fieldLine(&~out, c_nord13, "██", c_nord13, "Shell: ", shell);
+                fieldLine(&~out, c_nord14, "██", c_nord9, "CPU: ", cpu);
+                fieldLine(&~out, c_nord1, "▒▒", c_nord9, "GPU: ", gpu);
+        end case;
+        tailLine(&~out);
+        return nil;
+    end;
+
+    function main(root: RootCapability): ExitCode is
+        var forced_mode: SystemType := OtherMode();
+        var has_forced_mode: Bool := false;
+        var show_help: Bool := false;
+        var show_version: Bool := false;
+        let argc: Index := argumentCount();
+        if argc > (1 : Index) then
+            for i from 1 to argc - 1 do
+                let arg: Span[Nat8, Static] := nthArgument(i);
+                if spanEquals(arg, "--gentoo") then
+                    forced_mode := GentooMode();
+                    has_forced_mode := true;
+                else if spanEquals(arg, "--cachyos") then
+                    forced_mode := CachyMode();
+                    has_forced_mode := true;
+                else if spanEquals(arg, "--bedrock") then
+                    forced_mode := BedrockMode();
+                    has_forced_mode := true;
+                else if spanEquals(arg, "-v") then
+                    show_version := true;
+                else if spanEquals(arg, "--version") then
+                    show_version := true;
+                else if spanEquals(arg, "-h") then
+                    show_help := true;
+                else if spanEquals(arg, "--help") then
+                    show_help := true;
+                else if spanEquals(arg, "--Help") then
+                    show_help := true;
+                end if;
+            end for;
+        end if;
+
+        var out: ByteBuf := makeByteBuf(16384 : Index);
+        if show_help then
+            appendHelp(&!out);
+            writeAll(stdout_fd, &out);
+            destroyByteBuf(out);
+        else if show_version then
+            appendVersion(&!out);
+            writeAll(stdout_fd, &out);
+            destroyByteBuf(out);
+        else
+            var distro: ByteBuf := makeByteBuf(256 : Index);
+            var kernel: ByteBuf := makeByteBuf(256 : Index);
+            var uptime: ByteBuf := makeByteBuf(256 : Index);
+            var memory: ByteBuf := makeByteBuf(256 : Index);
+            var wm: ByteBuf := makeByteBuf(256 : Index);
+            var terminal: ByteBuf := makeByteBuf(256 : Index);
+            var shell: ByteBuf := makeByteBuf(256 : Index);
+            var cpu: ByteBuf := makeByteBuf(256 : Index);
+            var gpu: ByteBuf := makeByteBuf(256 : Index);
+            var packages: ByteBuf := makeByteBuf(1024 : Index);
+            var system_type: SystemType := getDistroAndType(&!distro);
+            if has_forced_mode then
+                system_type := forced_mode;
+            end if;
+
+            getKernel(&!kernel);
+            getUptime(&!uptime);
+            getMemory(&!memory);
+            getWm(&!wm);
+            getTerminal(&!terminal);
+            getCpu(&!cpu);
+            getGpu(&!gpu);
+            getPackages(&!packages, system_type);
+            getShell(&!shell);
+            renderFetch(&!out, system_type, &distro, &kernel, &uptime, &wm, &packages, &terminal, &memory, &shell, &cpu, &gpu);
+            writeAll(stdout_fd, &out);
+
+            destroyByteBuf(packages);
+            destroyByteBuf(gpu);
+            destroyByteBuf(cpu);
+            destroyByteBuf(shell);
+            destroyByteBuf(terminal);
+            destroyByteBuf(wm);
+            destroyByteBuf(memory);
+            destroyByteBuf(uptime);
+            destroyByteBuf(kernel);
+            destroyByteBuf(distro);
+            destroyByteBuf(out);
+        end if;
+        surrenderRoot(root);
+        return ExitSuccess();
+    end;
+end module body.

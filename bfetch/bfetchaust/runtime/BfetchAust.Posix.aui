@@ -1,0 +1,53 @@
+import Austral.Memory (
+    Address,
+    Pointer
+);
+
+module BfetchAust.Posix is
+    constant o_rdonly: Int32;
+    constant seek_set: Int32;
+    constant seek_end: Int32;
+    constant f_ok: Int32;
+    constant prot_read: Int32;
+    constant map_private: Int32;
+    constant stdout_fd: Int32;
+    constant dirent_reclen_offset: Index;
+    constant dirent_type_offset: Index;
+    constant dirent_name_offset: Index;
+    constant utsname_size: Index;
+    constant utsname_release_offset: Index;
+    constant utsname_machine_offset: Index;
+
+    function open(path: Span[Nat8, Static], flags: Int32, mode: Int32): Int32;
+    function fopen(path: Span[Nat8, Static], mode: Span[Nat8, Static]): Address[Nat8];
+    function fopenPtr(path: Pointer[Nat8], mode: Span[Nat8, Static]): Address[Nat8];
+    function fread(ptr: Pointer[Nat8], size: Index, nmemb: Index, stream: Pointer[Nat8]): Index;
+    function fcloseFile(stream: Pointer[Nat8]): Int32;
+    function fileno(stream: Pointer[Nat8]): Int32;
+    function read(fd: Int32, buf: Pointer[Nat8], count: Index): Int64;
+    function write(fd: Int32, buf: Pointer[Nat8], count: Index): Int64;
+    function close(fd: Int32): Int32;
+    function access(path: Span[Nat8, Static], mode: Int32): Int32;
+    function getenv(name: Span[Nat8, Static]): Address[Nat8];
+    function getppid(): Int32;
+    function readlink(path: Span[Nat8, Static], buf: Pointer[Nat8], count: Index): Int64;
+    function readlinkPtr(path: Pointer[Nat8], buf: Pointer[Nat8], count: Index): Int64;
+    function opendir(path: Span[Nat8, Static]): Address[Nat8];
+    function opendirPtr(path: Pointer[Nat8]): Address[Nat8];
+    function readdir(dir: Pointer[Nat8]): Address[Nat8];
+    function closedir(dir: Pointer[Nat8]): Int32;
+    function lseek(fd: Int32, offset: Int64, whence: Int32): Int64;
+    function mmap(addr: Address[Nat8], length: Index, prot: Int32, flags: Int32, fd: Int32, offset: Int64): Address[Nat8];
+    function munmap(addr: Pointer[Nat8], length: Index): Int32;
+    function uname(buf: Pointer[Nat8]): Int32;
+    function getNprocs(): Int32;
+    function memmem(haystack: Pointer[Nat8], haystack_len: Index, needle: Pointer[Nat8], needle_len: Index): Address[Nat8];
+    function strncasecmp(lhs: Pointer[Nat8], rhs: Pointer[Nat8], count: Index): Int32;
+
+    function openReadOnly(path: Span[Nat8, Static]): Int32;
+    function direntType(ent: Pointer[Nat8]): Nat8;
+    function direntName(ent: Pointer[Nat8]): Pointer[Nat8];
+    function direntRecordLength(ent: Pointer[Nat8]): Nat16;
+    function mapReadableFile(fd: Int32, length: Index): Address[Nat8];
+    function mapFailed(addr: Address[Nat8]): Bool;
+end module.

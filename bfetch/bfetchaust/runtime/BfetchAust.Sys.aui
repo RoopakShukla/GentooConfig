@@ -1,0 +1,42 @@
+import BfetchAust.FastIO (
+    ByteBuf
+);
+
+module BfetchAust.Sys is
+    union SystemType: Free is
+        case BedrockMode;
+        case GentooMode;
+        case CachyMode;
+        case OtherMode;
+    end;
+
+    generic [R: Region]
+    function getDistroAndType(out: &![ByteBuf, R]): SystemType;
+
+    generic [R: Region]
+    function getKernel(out: &![ByteBuf, R]): Unit;
+
+    generic [R: Region]
+    function getUptime(out: &![ByteBuf, R]): Unit;
+
+    generic [R: Region]
+    function getMemory(out: &![ByteBuf, R]): Unit;
+
+    generic [R: Region]
+    function getWm(out: &![ByteBuf, R]): Unit;
+
+    generic [R: Region]
+    function getTerminal(out: &![ByteBuf, R]): Unit;
+
+    generic [R: Region]
+    function getShell(out: &![ByteBuf, R]): Unit;
+
+    generic [R: Region]
+    function getPackages(out: &![ByteBuf, R], ty: SystemType): Unit;
+
+    generic [R: Region]
+    function getCpu(out: &![ByteBuf, R]): Unit;
+
+    generic [R: Region]
+    function getGpu(out: &![ByteBuf, R]): Unit;
+end module.

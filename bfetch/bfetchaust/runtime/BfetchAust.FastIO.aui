@@ -1,0 +1,70 @@
+import Austral.Memory (
+    Pointer
+);
+
+module BfetchAust.FastIO is
+    type ByteBuf: Linear;
+
+    function makeByteBuf(cap0: Index): ByteBuf;
+    function destroyByteBuf(buf: ByteBuf): Unit;
+
+    generic [R: Region]
+    function length(buf: &[ByteBuf, R]): Index;
+
+    generic [R: Region]
+    function capacity(buf: &[ByteBuf, R]): Index;
+
+    generic [R: Region]
+    function data(buf: &[ByteBuf, R]): Pointer[Nat8];
+
+    generic [R: Region]
+    function clear(buf: &![ByteBuf, R]): Unit;
+
+    generic [R: Region]
+    function nth(buf: &[ByteBuf, R], pos: Index): Nat8;
+
+    generic [R: Region]
+    function storeNth(buf: &![ByteBuf, R], pos: Index, byte: Nat8): Unit;
+
+    generic [R: Region]
+    function setLength(buf: &![ByteBuf, R], len: Index): Unit;
+
+    generic [R: Region]
+    function appendByte(buf: &![ByteBuf, R], byte: Nat8): Unit;
+
+    generic [R: Region, S: Region]
+    function appendSpan(buf: &![ByteBuf, R], bytes: Span[Nat8, S]): Unit;
+
+    generic [R: Region]
+    function appendCString(buf: &![ByteBuf, R], str: Pointer[Nat8]): Unit;
+
+    generic [R: Region, S: Region]
+    function assignSpan(buf: &![ByteBuf, R], bytes: Span[Nat8, S]): Unit;
+
+    generic [R: Region]
+    function assignCString(buf: &![ByteBuf, R], str: Pointer[Nat8]): Unit;
+
+    generic [R: Region]
+    function nullTerminate(buf: &![ByteBuf, R]): Unit;
+
+    generic [R: Region]
+    function appendIndexDecimal(buf: &![ByteBuf, R], value: Index): Unit;
+
+    generic [R: Region]
+    function assignIndexDecimal(buf: &![ByteBuf, R], value: Index): Unit;
+
+    generic [R: Region]
+    function appendHex4(buf: &![ByteBuf, R], value: Nat32): Unit;
+
+    generic [R: Region]
+    function readFileFast(path: Span[Nat8, Static], buf: &![ByteBuf, R]): Bool;
+
+    generic [R: Region]
+    function readFilePtrFast(path: Pointer[Nat8], buf: &![ByteBuf, R]): Bool;
+
+    generic [R: Region]
+    function readLinkPtrFast(path: Pointer[Nat8], buf: &![ByteBuf, R]): Bool;
+
+    generic [R: Region]
+    function writeAll(fd: Int32, buf: &[ByteBuf, R]): Int64;
+end module.

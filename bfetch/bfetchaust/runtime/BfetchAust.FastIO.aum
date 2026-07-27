@@ -1,0 +1,302 @@
+pragma Unsafe_Module;
+
+import Austral.Memory (
+    Address,
+    Pointer,
+    allocateBuffer,
+    deallocate,
+    nullCheck,
+    positiveOffset,
+    load,
+    store
+);
+import BfetchAust.Posix (
+    fopen,
+    fopenPtr,
+    fread,
+    fcloseFile,
+    readlinkPtr,
+    write
+);
+
+module body BfetchAust.FastIO is
+    record ByteBuf: Linear is
+        cap: Index;
+        len: Index;
+        ptr: Pointer[Nat8];
+    end;
+
+    function makeByteBuf(cap0: Index): ByteBuf is
+        if cap0 = (0 : Index) then
+            abort("makeByteBuf: zero capacity");
+        end if;
+        let addr: Address[Nat8] := allocateBuffer(cap0);
+        case nullCheck(addr) of
+            when Some(value as ptr: Pointer[Nat8]) do
+                return ByteBuf(cap => cap0, len => (0 : Index), ptr => ptr);
+            when None do
+                abort("makeByteBuf: allocation failed");
+        end case;
+    end;
+
+    function destroyByteBuf(buf: ByteBuf): Unit is
+        let { cap: Index, len: Index, ptr: Pointer[Nat8] } := buf;
+        deallocate(ptr);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function length(buf: &[ByteBuf, R]): Index is
+        return buf->len;
+    end;
+
+    generic [R: Region]
+    function capacity(buf: &[ByteBuf, R]): Index is
+        return buf->cap;
+    end;
+
+    generic [R: Region]
+    function data(buf: &[ByteBuf, R]): Pointer[Nat8] is
+        return buf->ptr;
+    end;
+
+    generic [R: Region]
+    function clear(buf: &![ByteBuf, R]): Unit is
+        buf->len := (0 : Index);
+        store(buf->ptr, (0 : Nat8));
+        return nil;
+    end;
+
+    generic [R: Region]
+    function nth(buf: &[ByteBuf, R], pos: Index): Nat8 is
+        if pos >= buf->len then
+            abort("ByteBuf.nth: index out of range");
+        end if;
+        return load(positiveOffset(buf->ptr, pos));
+    end;
+
+    generic [R: Region]
+    function storeNth(buf: &![ByteBuf, R], pos: Index, byte: Nat8): Unit is
+        if pos >= buf->cap then
+            abort("ByteBuf.storeNth: index out of range");
+        end if;
+        store(positiveOffset(buf->ptr, pos), byte);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function setLength(buf: &![ByteBuf, R], len: Index): Unit is
+        if len >= buf->cap then
+            abort("ByteBuf.setLength: length out of range");
+        end if;
+        buf->len := len;
+        store(positiveOffset(buf->ptr, len), (0 : Nat8));
+        return nil;
+    end;
+
+    generic [R: Region]
+    function appendByte(buf: &![ByteBuf, R], byte: Nat8): Unit is
+        if (buf->len + (1 : Index)) >= buf->cap then
+            abort("ByteBuf.appendByte: buffer full");
+        end if;
+        store(positiveOffset(buf->ptr, buf->len), byte);
+        buf->len := buf->len + (1 : Index);
+        store(positiveOffset(buf->ptr, buf->len), (0 : Nat8));
+        return nil;
+    end;
+
+    generic [R: Region, S: Region]
+    function appendSpan(buf: &![ByteBuf, R], bytes: Span[Nat8, S]): Unit is
+        let n: Index := spanLength(bytes);
+        if n > 0 then
+            for i from 0 to n - 1 do
+                if (buf->len + (1 : Index)) >= buf->cap then
+                    abort("ByteBuf.appendSpan: buffer full");
+                end if;
+                store(positiveOffset(buf->ptr, buf->len), bytes[i]);
+                buf->len := buf->len + (1 : Index);
+                store(positiveOffset(buf->ptr, buf->len), (0 : Nat8));
+            end for;
+        end if;
+        return nil;
+    end;
+
+    generic [R: Region]
+    function appendCString(buf: &![ByteBuf, R], str: Pointer[Nat8]): Unit is
+        var pos: Index := 0 : Index;
+        var reading: Bool := true;
+        while reading do
+            let byte: Nat8 := load(positiveOffset(str, pos));
+            if byte = (0 : Nat8) then
+                reading := false;
+            else
+                if (buf->len + (1 : Index)) >= buf->cap then
+                    abort("ByteBuf.appendCString: buffer full");
+                end if;
+                store(positiveOffset(buf->ptr, buf->len), byte);
+                buf->len := buf->len + (1 : Index);
+                store(positiveOffset(buf->ptr, buf->len), (0 : Nat8));
+                pos := pos + (1 : Index);
+            end if;
+        end while;
+        return nil;
+    end;
+
+    generic [R: Region, S: Region]
+    function assignSpan(buf: &![ByteBuf, R], bytes: Span[Nat8, S]): Unit is
+        clear(&~buf);
+        appendSpan(&~buf, bytes);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function assignCString(buf: &![ByteBuf, R], str: Pointer[Nat8]): Unit is
+        clear(&~buf);
+        appendCString(&~buf, str);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function nullTerminate(buf: &![ByteBuf, R]): Unit is
+        store(positiveOffset(buf->ptr, buf->len), (0 : Nat8));
+        return nil;
+    end;
+
+    function hexDigit(value: Nat8): Nat8 is
+        if value < (10 : Nat8) then
+            return value + (48 : Nat8);
+        else
+            return value + (87 : Nat8);
+        end if;
+    end;
+
+    generic [R: Region]
+    function appendIndexDigits(buf: &![ByteBuf, R], value: Index): Unit is
+        if value >= (10 : Index) then
+            appendIndexDigits(&~buf, value / (10 : Index));
+        end if;
+        case toNat8(rem(value, (10 : Index))) of
+            when Some(value as digit: Nat8) do
+                appendByte(&~buf, digit + (48 : Nat8));
+            when None do
+                abort("appendIndexDigits: digit conversion failed");
+        end case;
+        return nil;
+    end;
+
+    generic [R: Region]
+    function appendIndexDecimal(buf: &![ByteBuf, R], value: Index): Unit is
+        if value = (0 : Index) then
+            appendByte(&~buf, '0');
+        else
+            appendIndexDigits(&~buf, value);
+        end if;
+        return nil;
+    end;
+
+    generic [R: Region]
+    function assignIndexDecimal(buf: &![ByteBuf, R], value: Index): Unit is
+        clear(&~buf);
+        appendIndexDecimal(&~buf, value);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function appendHex4(buf: &![ByteBuf, R], value: Nat32): Unit is
+        let s12: Nat32 := bitwiseAnd(value / (4096 : Nat32), 15 : Nat32);
+        let s8: Nat32 := bitwiseAnd(value / (256 : Nat32), 15 : Nat32);
+        let s4: Nat32 := bitwiseAnd(value / (16 : Nat32), 15 : Nat32);
+        let s0: Nat32 := bitwiseAnd(value, 15 : Nat32);
+        case toNat8(s12) of
+            when Some(value as d: Nat8) do
+                appendByte(&~buf, hexDigit(d));
+            when None do
+                abort("appendHex4: conversion failed");
+        end case;
+        case toNat8(s8) of
+            when Some(value as d: Nat8) do
+                appendByte(&~buf, hexDigit(d));
+            when None do
+                abort("appendHex4: conversion failed");
+        end case;
+        case toNat8(s4) of
+            when Some(value as d: Nat8) do
+                appendByte(&~buf, hexDigit(d));
+            when None do
+                abort("appendHex4: conversion failed");
+        end case;
+        case toNat8(s0) of
+            when Some(value as d: Nat8) do
+                appendByte(&~buf, hexDigit(d));
+            when None do
+                abort("appendHex4: conversion failed");
+        end case;
+        return nil;
+    end;
+
+    generic [R: Region]
+    function readFileFast(path: Span[Nat8, Static], buf: &![ByteBuf, R]): Bool is
+        clear(&~buf);
+        case nullCheck(fopen(path, "rb")) of
+            when Some(value as file: Pointer[Nat8]) do
+                var bytes_read: Index := 0 : Index;
+                borrow ref: &[ByteBuf, S] := &~buf do
+                    bytes_read := fread(ref->ptr, 1 : Index, ref->cap - (1 : Index), file);
+                end borrow;
+                fcloseFile(file);
+                if bytes_read = (0 : Index) then
+                    return false;
+                else
+                    buf->len := bytes_read;
+                    store(positiveOffset(buf->ptr, bytes_read), (0 : Nat8));
+                    return true;
+                end if;
+            when None do
+                return false;
+        end case;
+    end;
+
+    generic [R: Region]
+    function readFilePtrFast(path: Pointer[Nat8], buf: &![ByteBuf, R]): Bool is
+        clear(&~buf);
+        case nullCheck(fopenPtr(path, "rb")) of
+            when Some(value as file: Pointer[Nat8]) do
+                var bytes_read: Index := 0 : Index;
+                borrow ref: &[ByteBuf, S] := &~buf do
+                    bytes_read := fread(ref->ptr, 1 : Index, ref->cap - (1 : Index), file);
+                end borrow;
+                fcloseFile(file);
+                if bytes_read = (0 : Index) then
+                    return false;
+                else
+                    buf->len := bytes_read;
+                    store(positiveOffset(buf->ptr, bytes_read), (0 : Nat8));
+                    return true;
+                end if;
+            when None do
+                return false;
+        end case;
+    end;
+
+    generic [R: Region]
+    function readLinkPtrFast(path: Pointer[Nat8], buf: &![ByteBuf, R]): Bool is
+        clear(&~buf);
+        case toIndex(readlinkPtr(path, buf->ptr, buf->cap - (1 : Index))) of
+            when Some(value as len: Index) do
+                if len = (0 : Index) then
+                    return false;
+                else
+                    buf->len := len;
+                    store(positiveOffset(buf->ptr, len), (0 : Nat8));
+                    return true;
+                end if;
+            when None do
+                return false;
+        end case;
+    end;
+
+    generic [R: Region]
+    function writeAll(fd: Int32, buf: &[ByteBuf, R]): Int64 is
+        return write(fd, buf->ptr, buf->len);
+    end;
+end module body.

@@ -1,0 +1,152 @@
+pragma Unsafe_Module;
+
+import Austral.Memory (
+    Address,
+    Pointer,
+    nullPointer,
+    positiveOffset,
+    pointerCast,
+    load
+);
+
+module body BfetchAust.Posix is
+    constant o_rdonly: Int32 := 0;
+    constant seek_set: Int32 := 0;
+    constant seek_end: Int32 := 2;
+    constant f_ok: Int32 := 0;
+    constant prot_read: Int32 := 1;
+    constant map_private: Int32 := 2;
+    constant stdout_fd: Int32 := 1;
+    constant dirent_reclen_offset: Index := 16;
+    constant dirent_type_offset: Index := 18;
+    constant dirent_name_offset: Index := 19;
+    constant utsname_size: Index := 390;
+    constant utsname_release_offset: Index := 130;
+    constant utsname_machine_offset: Index := 260;
+
+    pragma Foreign_Import(External_Name => "open");
+    function open(path: Span[Nat8, Static], flags: Int32, mode: Int32): Int32 is
+    end;
+
+    pragma Foreign_Import(External_Name => "fopen");
+    function fopen(path: Span[Nat8, Static], mode: Span[Nat8, Static]): Address[Nat8] is
+    end;
+
+    pragma Foreign_Import(External_Name => "fopen");
+    function fopenPtr(path: Pointer[Nat8], mode: Span[Nat8, Static]): Address[Nat8] is
+    end;
+
+    pragma Foreign_Import(External_Name => "fread");
+    function fread(ptr: Pointer[Nat8], size: Index, nmemb: Index, stream: Pointer[Nat8]): Index is
+    end;
+
+    pragma Foreign_Import(External_Name => "fclose");
+    function fcloseFile(stream: Pointer[Nat8]): Int32 is
+    end;
+
+    pragma Foreign_Import(External_Name => "fileno");
+    function fileno(stream: Pointer[Nat8]): Int32 is
+    end;
+
+    pragma Foreign_Import(External_Name => "read");
+    function read(fd: Int32, buf: Pointer[Nat8], count: Index): Int64 is
+    end;
+
+    pragma Foreign_Import(External_Name => "write");
+    function write(fd: Int32, buf: Pointer[Nat8], count: Index): Int64 is
+    end;
+
+    pragma Foreign_Import(External_Name => "close");
+    function close(fd: Int32): Int32 is
+    end;
+
+    pragma Foreign_Import(External_Name => "access");
+    function access(path: Span[Nat8, Static], mode: Int32): Int32 is
+    end;
+
+    pragma Foreign_Import(External_Name => "getenv");
+    function getenv(name: Span[Nat8, Static]): Address[Nat8] is
+    end;
+
+    pragma Foreign_Import(External_Name => "getppid");
+    function getppid(): Int32 is
+    end;
+
+    pragma Foreign_Import(External_Name => "readlink");
+    function readlink(path: Span[Nat8, Static], buf: Pointer[Nat8], count: Index): Int64 is
+    end;
+
+    pragma Foreign_Import(External_Name => "readlink");
+    function readlinkPtr(path: Pointer[Nat8], buf: Pointer[Nat8], count: Index): Int64 is
+    end;
+
+    pragma Foreign_Import(External_Name => "opendir");
+    function opendir(path: Span[Nat8, Static]): Address[Nat8] is
+    end;
+
+    pragma Foreign_Import(External_Name => "opendir");
+    function opendirPtr(path: Pointer[Nat8]): Address[Nat8] is
+    end;
+
+    pragma Foreign_Import(External_Name => "readdir");
+    function readdir(dir: Pointer[Nat8]): Address[Nat8] is
+    end;
+
+    pragma Foreign_Import(External_Name => "closedir");
+    function closedir(dir: Pointer[Nat8]): Int32 is
+    end;
+
+    pragma Foreign_Import(External_Name => "lseek");
+    function lseek(fd: Int32, offset: Int64, whence: Int32): Int64 is
+    end;
+
+    pragma Foreign_Import(External_Name => "mmap");
+    function mmap(addr: Address[Nat8], length: Index, prot: Int32, flags: Int32, fd: Int32, offset: Int64): Address[Nat8] is
+    end;
+
+    pragma Foreign_Import(External_Name => "munmap");
+    function munmap(addr: Pointer[Nat8], length: Index): Int32 is
+    end;
+
+    pragma Foreign_Import(External_Name => "uname");
+    function uname(buf: Pointer[Nat8]): Int32 is
+    end;
+
+    pragma Foreign_Import(External_Name => "get_nprocs");
+    function getNprocs(): Int32 is
+    end;
+
+    pragma Foreign_Import(External_Name => "memmem");
+    function memmem(haystack: Pointer[Nat8], haystack_len: Index, needle: Pointer[Nat8], needle_len: Index): Address[Nat8] is
+    end;
+
+    pragma Foreign_Import(External_Name => "strncasecmp");
+    function strncasecmp(lhs: Pointer[Nat8], rhs: Pointer[Nat8], count: Index): Int32 is
+    end;
+
+    function openReadOnly(path: Span[Nat8, Static]): Int32 is
+        return open(path, o_rdonly, 0);
+    end;
+
+    function direntType(ent: Pointer[Nat8]): Nat8 is
+        return load(positiveOffset(ent, dirent_type_offset));
+    end;
+
+    function direntName(ent: Pointer[Nat8]): Pointer[Nat8] is
+        return positiveOffset(ent, dirent_name_offset);
+    end;
+
+    function direntRecordLength(ent: Pointer[Nat8]): Nat16 is
+        let ptr: Pointer[Nat16] := pointerCast(positiveOffset(ent, dirent_reclen_offset));
+        return load(ptr);
+    end;
+
+    function mapReadableFile(fd: Int32, length: Index): Address[Nat8] is
+        let addr: Address[Nat8] := nullPointer();
+        return mmap(addr, length, prot_read, map_private, fd, 0);
+    end;
+
+    function mapFailed(addr: Address[Nat8]): Bool is
+        return @embed(Bool, "$1 == ((void*)-1)", addr);
+    end;
+end module body.

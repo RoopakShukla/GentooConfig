@@ -1,0 +1,1284 @@
+pragma Unsafe_Module;
+
+import Austral.Memory (
+    Address,
+    Pointer,
+    load,
+    nullCheck,
+    positiveOffset
+);
+import BfetchAust.Posix (
+    access,
+    closedir,
+    direntName,
+    direntType,
+    f_ok,
+    fcloseFile,
+    fileno,
+    fopen,
+    fopenPtr,
+    getenv,
+    getNprocs,
+    getppid,
+    lseek,
+    mapFailed,
+    mapReadableFile,
+    memmem,
+    munmap,
+    opendir,
+    opendirPtr,
+    readdir,
+    readlinkPtr,
+    seek_end,
+    seek_set,
+    uname,
+    utsname_size,
+    utsname_release_offset
+);
+import BfetchAust.FastIO (
+    ByteBuf,
+    makeByteBuf,
+    destroyByteBuf,
+    data,
+    length,
+    nth,
+    appendByte,
+    appendCString,
+    appendHex4,
+    appendSpan,
+    appendIndexDecimal,
+    assignSpan,
+    assignCString,
+    readFileFast,
+    readFilePtrFast,
+    readLinkPtrFast,
+    setLength
+);
+
+module body BfetchAust.Sys is
+    union SystemType: Free is
+        case BedrockMode;
+        case GentooMode;
+        case CachyMode;
+        case OtherMode;
+    end;
+
+    function lowerAscii(byte: Nat8): Nat8 is
+        if (byte >= 'A') and (byte <= 'Z') then
+            return byte + (32 : Nat8);
+        else
+            return byte;
+        end if;
+    end;
+
+    function digitIndex(byte: Nat8): Index is
+        case toIndex(byte - '0') of
+            when Some(value as digit: Index) do
+                return digit;
+            when None do
+                abort("digitIndex: conversion failed");
+        end case;
+    end;
+
+    generic [R: Region]
+    function matchesAt(buf: &[ByteBuf, R], pos: Index, lit: Span[Nat8, Static]): Bool is
+        let n: Index := spanLength(lit);
+        if (pos + n) > length(buf) then
+            return false;
+        end if;
+        if n > 0 then
+            for i from 0 to n - 1 do
+                if nth(buf, pos + i) /= lit[i] then
+                    return false;
+                end if;
+            end for;
+        end if;
+        return true;
+    end;
+
+    generic [R: Region]
+    function containsAsciiCI(buf: &[ByteBuf, R], lit: Span[Nat8, Static]): Bool is
+        let n: Index := spanLength(lit);
+        if n = (0 : Index) then
+            return true;
+        end if;
+        if n > length(buf) then
+            return false;
+        end if;
+        for pos from 0 to length(buf) - n do
+            var ok: Bool := true;
+            for i from 0 to n - 1 do
+                if lowerAscii(nth(buf, pos + i)) /= lowerAscii(lit[i]) then
+                    ok := false;
+                end if;
+            end for;
+            if ok then
+                return true;
+            end if;
+        end for;
+        return false;
+    end;
+
+    generic [R: Region]
+    function assignUnknown(out: &![ByteBuf, R]): Unit is
+        assignSpan(&~out, "Unknown");
+        return nil;
+    end;
+
+    generic [R: Region]
+    function assignLinux(out: &![ByteBuf, R]): Unit is
+        assignSpan(&~out, "Linux");
+        return nil;
+    end;
+
+    generic [R: Region]
+    function assignBasename(out: &![ByteBuf, R], ptr: Pointer[Nat8]): Unit is
+        var pos: Index := 0 : Index;
+        var base: Index := 0 : Index;
+        var reading: Bool := true;
+        while reading do
+            let byte: Nat8 := load(positiveOffset(ptr, pos));
+            if byte = (0 : Nat8) then
+                reading := false;
+            else
+                if byte = '/' then
+                    base := pos + (1 : Index);
+                end if;
+                pos := pos + (1 : Index);
+            end if;
+        end while;
+        assignCString(&~out, positiveOffset(ptr, base));
+        return nil;
+    end;
+
+    generic [R: Region]
+    function detectType(buf: &[ByteBuf, R]): SystemType is
+        if containsAsciiCI(buf, "cachyos") then
+            return CachyMode();
+        else if containsAsciiCI(buf, "gentoo") then
+            return GentooMode();
+        else if containsAsciiCI(buf, "bedrock") then
+            return BedrockMode();
+        else
+            return OtherMode();
+        end if;
+    end;
+
+    function isOther(ty: SystemType): Bool is
+        case ty of
+            when OtherMode do
+                return true;
+            when BedrockMode do
+                return false;
+            when GentooMode do
+                return false;
+            when CachyMode do
+                return false;
+        end case;
+    end;
+
+    generic [R: Region, S: Region]
+    function copyPrettyName(out: &![ByteBuf, R], src: &[ByteBuf, S]): Bool is
+        let quoted: Span[Nat8, Static] := "PRETTY_NAME=\"";
+        let plain: Span[Nat8, Static] := "PRETTY_NAME=";
+        let n: Index := length(src);
+        if n = (0 : Index) then
+            return false;
+        end if;
+        for pos from 0 to n - (1 : Index) do
+            if matchesAt(src, pos, quoted) then
+                var i: Index := pos + spanLength(quoted);
+                assignSpan(&~out, "");
+                while i < n do
+                    let byte: Nat8 := nth(src, i);
+                    if (byte = '"') or (byte = '\n') then
+                        return true;
+                    end if;
+                    appendByte(&~out, byte);
+                    i := i + (1 : Index);
+                end while;
+                return true;
+            end if;
+            if matchesAt(src, pos, plain) then
+                var i: Index := pos + spanLength(plain);
+                assignSpan(&~out, "");
+                while i < n do
+                    let byte: Nat8 := nth(src, i);
+                    if byte = '\n' then
+                        return true;
+                    end if;
+                    appendByte(&~out, byte);
+                    i := i + (1 : Index);
+                end while;
+                return true;
+            end if;
+        end for;
+        return false;
+    end;
+
+    generic [R: Region]
+    function lineLength(buf: &[ByteBuf, R]): Index is
+        let n: Index := length(buf);
+        var len: Index := 0 : Index;
+        while len < n do
+            if nth(buf, len) = '\n' then
+                return len;
+            end if;
+            len := len + (1 : Index);
+        end while;
+        return len;
+    end;
+
+    generic [R: Region, S: Region]
+    function lineEquals(buf: &[ByteBuf, R], lit: Span[Nat8, S]): Bool is
+        let n: Index := lineLength(buf);
+        if n /= spanLength(lit) then
+            return false;
+        end if;
+        if n > (0 : Index) then
+            for i from 0 to n - 1 do
+                if nth(buf, i) /= lit[i] then
+                    return false;
+                end if;
+            end for;
+        end if;
+        return true;
+    end;
+
+    generic [R: Region, S: Region]
+    function assignLine(out: &![ByteBuf, R], src: &[ByteBuf, S]): Unit is
+        let n: Index := lineLength(src);
+        assignSpan(&~out, "");
+        if n > (0 : Index) then
+            for i from 0 to n - 1 do
+                appendByte(&~out, nth(src, i));
+            end for;
+        end if;
+        return nil;
+    end;
+
+    generic [R: Region]
+    function commIsShell(buf: &[ByteBuf, R]): Bool is
+        if lineEquals(buf, "bash") then
+            return true;
+        else if lineEquals(buf, "zsh") then
+            return true;
+        else if lineEquals(buf, "fish") then
+            return true;
+        else if lineEquals(buf, "sh") then
+            return true;
+        else
+            return false;
+        end if;
+    end;
+
+    generic [R: Region, S: Region]
+    function matchesAsciiCIAt(buf: &[ByteBuf, R], pos: Index, lit: Span[Nat8, S]): Bool is
+        let n: Index := spanLength(lit);
+        if (pos + n) > length(buf) then
+            return false;
+        end if;
+        if n > (0 : Index) then
+            for i from 0 to n - 1 do
+                if lowerAscii(nth(buf, pos + i)) /= lowerAscii(lit[i]) then
+                    return false;
+                end if;
+            end for;
+        end if;
+        return true;
+    end;
+
+    generic [R: Region, S: Region]
+    function copyFieldValueAfterKey(out: &![ByteBuf, R], src: &[ByteBuf, S], key: Span[Nat8, Static]): Bool is
+        let n: Index := length(src);
+        let key_len: Index := spanLength(key);
+        if key_len > n then
+            return false;
+        end if;
+        for pos from 0 to n - key_len do
+            if matchesAt(src, pos, key) then
+                var i: Index := pos + key_len;
+                while (i < n) and (nth(src, i) /= ':') do
+                    i := i + (1 : Index);
+                end while;
+                if i >= n then
+                    return false;
+                end if;
+                i := i + (1 : Index);
+                while (i < n) and (nth(src, i) = ' ') do
+                    i := i + (1 : Index);
+                end while;
+                assignSpan(&~out, "");
+                while i < n do
+                    let byte: Nat8 := nth(src, i);
+                    if byte = '\n' then
+                        return true;
+                    end if;
+                    appendByte(&~out, byte);
+                    i := i + (1 : Index);
+                end while;
+                return true;
+            end if;
+        end for;
+        return false;
+    end;
+
+    generic [R: Region, S: Region]
+    function cleanCpuModel(out: &![ByteBuf, R], src: &[ByteBuf, S]): Unit is
+        var pos: Index := 0 : Index;
+        var need_space: Bool := false;
+        var out_len: Index := 0 : Index;
+        assignSpan(&~out, "");
+        while pos < length(src) do
+            let byte: Nat8 := nth(src, pos);
+            if byte = '@' then
+                pos := length(src);
+            else if matchesAsciiCIAt(src, pos, "Six-Core") then
+                pos := pos + spanLength("Six-Core");
+            else if matchesAsciiCIAt(src, pos, "Eight-Core") then
+                pos := pos + spanLength("Eight-Core");
+            else if matchesAsciiCIAt(src, pos, "Quad-Core") then
+                pos := pos + spanLength("Quad-Core");
+            else if matchesAsciiCIAt(src, pos, "Twelve-Core") then
+                pos := pos + spanLength("Twelve-Core");
+            else if matchesAsciiCIAt(src, pos, "Sixteen-Core") then
+                pos := pos + spanLength("Sixteen-Core");
+            else if matchesAsciiCIAt(src, pos, "24-Core") then
+                pos := pos + spanLength("24-Core");
+            else if matchesAsciiCIAt(src, pos, "32-Core") then
+                pos := pos + spanLength("32-Core");
+            else if matchesAsciiCIAt(src, pos, "64-Core") then
+                pos := pos + spanLength("64-Core");
+            else if matchesAsciiCIAt(src, pos, "6-Core") then
+                pos := pos + spanLength("6-Core");
+            else if matchesAsciiCIAt(src, pos, "8-Core") then
+                pos := pos + spanLength("8-Core");
+            else if matchesAsciiCIAt(src, pos, "12-Core") then
+                pos := pos + spanLength("12-Core");
+            else if matchesAsciiCIAt(src, pos, "16-Core") then
+                pos := pos + spanLength("16-Core");
+            else if matchesAsciiCIAt(src, pos, "-Core") then
+                pos := pos + spanLength("-Core");
+            else if matchesAsciiCIAt(src, pos, "Core") then
+                pos := pos + spanLength("Core");
+            else if matchesAsciiCIAt(src, pos, "Processor") then
+                pos := pos + spanLength("Processor");
+            else if matchesAsciiCIAt(src, pos, "with Radeon Graphics") then
+                pos := pos + spanLength("with Radeon Graphics");
+            else if matchesAsciiCIAt(src, pos, "with Graphics") then
+                pos := pos + spanLength("with Graphics");
+            else if byte = ' ' then
+                need_space := out_len > (0 : Index);
+                pos := pos + (1 : Index);
+                while (pos < length(src)) and (nth(src, pos) = ' ') do
+                    pos := pos + (1 : Index);
+                end while;
+            else
+                if need_space then
+                    appendByte(&~out, ' ');
+                    out_len := out_len + (1 : Index);
+                    need_space := false;
+                end if;
+                appendByte(&~out, byte);
+                out_len := out_len + (1 : Index);
+                pos := pos + (1 : Index);
+            end if;
+        end while;
+        return nil;
+    end;
+
+    function hexDigitValue(byte: Nat8): Option[Index] is
+        if (byte >= '0') and (byte <= '9') then
+            return Some(value => digitIndex(byte));
+        else if (lowerAscii(byte) >= 'a') and (lowerAscii(byte) <= 'f') then
+            case toIndex(lowerAscii(byte) - 'a') of
+                when Some(value as d: Index) do
+                    return Some(value => (10 : Index) + d);
+                when None do
+                    return None();
+            end case;
+        else
+            return None();
+        end if;
+    end;
+
+    generic [R: Region]
+    function parseHexPrefix(buf: &[ByteBuf, R]): Option[Index] is
+        let n: Index := length(buf);
+        var pos: Index := 0 : Index;
+        var value: Index := 0 : Index;
+        var saw_digit: Bool := false;
+        if n >= (2 : Index) then
+            if nth(buf, (0 : Index)) = '0' then
+                if lowerAscii(nth(buf, (1 : Index))) = 'x' then
+                    pos := 2 : Index;
+                end if;
+            end if;
+        end if;
+        while pos < n do
+            case hexDigitValue(nth(buf, pos)) of
+                when Some(value as digit: Index) do
+                    saw_digit := true;
+                    value := (value * (16 : Index)) + digit;
+                    pos := pos + (1 : Index);
+                when None do
+                    if saw_digit then
+                        return Some(value => value);
+                    else
+                        return None();
+                    end if;
+            end case;
+        end while;
+        if saw_digit then
+            return Some(value => value);
+        else
+            return None();
+        end if;
+    end;
+
+    generic [R: Region]
+    function buildDrmPath(out: &![ByteBuf, R], card: Index, tail: Span[Nat8, Static]): Unit is
+        assignSpan(&~out, "/sys/class/drm/card");
+        appendIndexDecimal(&~out, card);
+        appendSpan(&~out, tail);
+        return nil;
+    end;
+
+    function hex4Char(value: Index): Nat8 is
+        if value < (10 : Index) then
+            case toNat8(value) of
+                when Some(value as digit: Nat8) do
+                    return (48 : Nat8) + digit;
+                when None do
+                    abort("hex4Char: decimal conversion failed");
+            end case;
+        else
+            case toNat8(value - (10 : Index)) of
+                when Some(value as digit: Nat8) do
+                    return (97 : Nat8) + digit;
+                when None do
+                    abort("hex4Char: hex conversion failed");
+            end case;
+        end if;
+    end;
+
+    function indexToNat32(value: Index): Nat32 is
+        case toNat32(value) of
+            when Some(value as out: Nat32) do
+                return out;
+            when None do
+                abort("indexToNat32: conversion failed");
+        end case;
+    end;
+
+    generic [R: Region]
+    function hex4Matches(buf: &[ByteBuf, R], pos: Index, value: Index): Bool is
+        if (pos + (4 : Index)) > length(buf) then
+            return false;
+        end if;
+        if lowerAscii(nth(buf, pos + (0 : Index))) /= hex4Char(rem(value / (4096 : Index), (16 : Index))) then
+            return false;
+        end if;
+        if lowerAscii(nth(buf, pos + (1 : Index))) /= hex4Char(rem(value / (256 : Index), (16 : Index))) then
+            return false;
+        end if;
+        if lowerAscii(nth(buf, pos + (2 : Index))) /= hex4Char(rem(value / (16 : Index), (16 : Index))) then
+            return false;
+        end if;
+        if lowerAscii(nth(buf, pos + (3 : Index))) /= hex4Char(rem(value, (16 : Index))) then
+            return false;
+        end if;
+        return true;
+    end;
+
+    generic [R: Region, S: Region]
+    function copyGpuLineName(out: &![ByteBuf, R], src: &[ByteBuf, S], start: Index, stop: Index, vendor: Index): Unit is
+        var open_br: Index := stop;
+        var close_br: Index := stop;
+        var name_start: Index := start;
+        var name_stop: Index := stop;
+        var i: Index := start;
+        while i < stop do
+            let byte: Nat8 := nth(src, i);
+            if (byte = '[') and (open_br = stop) then
+                open_br := i;
+            end if;
+            if (byte = ']') and (open_br /= stop) then
+                close_br := i;
+                i := stop;
+            else
+                i := i + (1 : Index);
+            end if;
+        end while;
+        assignSpan(&~out, "");
+        if open_br < stop then
+            if close_br < stop then
+                if close_br > open_br then
+                    name_start := open_br + (1 : Index);
+                    name_stop := close_br;
+                end if;
+            end if;
+        end if;
+        if name_start < name_stop then
+            let first: Nat8 := nth(src, name_start);
+            if (first /= 'N') and (first /= 'A') then
+                if vendor = (4318 : Index) then
+                    appendSpan(&~out, "NVIDIA ");
+                else if vendor = (4098 : Index) then
+                    appendSpan(&~out, "AMD ");
+                end if;
+            end if;
+        end if;
+        i := name_start;
+        while i < name_stop do
+            appendByte(&~out, nth(src, i));
+            i := i + (1 : Index);
+        end while;
+        return nil;
+    end;
+
+    generic [R: Region]
+    function lookupPciName(out: &![ByteBuf, R], vendor: Index, device: Index): Bool is
+        var raw: ByteBuf := makeByteBuf(4194304 : Index);
+        var ok: Bool := false;
+        var loaded: Bool := false;
+        if readFileFast("/usr/share/hwdata/pci.ids", &!raw) then
+            loaded := true;
+        else if readFileFast("/usr/share/misc/pci.ids", &!raw) then
+            loaded := true;
+        end if;
+        if loaded then
+            let n: Index := length(&raw);
+            var pos: Index := 0 : Index;
+            var vendor_found: Bool := false;
+            while (pos < n) and (not vendor_found) do
+                if ((pos = (0 : Index)) or (nth(&raw, pos - (1 : Index)) = '\n')) and hex4Matches(&raw, pos, vendor) then
+                    vendor_found := true;
+                else
+                    pos := pos + (1 : Index);
+                end if;
+            end while;
+            if vendor_found then
+                while (pos < n) and (nth(&raw, pos) /= '\n') do
+                    pos := pos + (1 : Index);
+                end while;
+                if pos < n then
+                    pos := pos + (1 : Index);
+                end if;
+                while pos < n do
+                    if nth(&raw, pos) /= '\t' then
+                        while (pos < n) and (nth(&raw, pos) /= '\n') do
+                            pos := pos + (1 : Index);
+                        end while;
+                        if pos < n then
+                            pos := pos + (1 : Index);
+                        end if;
+                    else if ((pos + (1 : Index)) < n) and (nth(&raw, pos + (1 : Index)) = '\t') then
+                        while (pos < n) and (nth(&raw, pos) /= '\n') do
+                            pos := pos + (1 : Index);
+                        end while;
+                        if pos < n then
+                            pos := pos + (1 : Index);
+                        end if;
+                    else
+                        if hex4Matches(&raw, pos + (1 : Index), device) then
+                            var start: Index := pos + (5 : Index);
+                            while (start < n) and ((nth(&raw, start) = ' ') or (nth(&raw, start) = '\t')) do
+                                start := start + (1 : Index);
+                            end while;
+                            var stop: Index := start;
+                            while (stop < n) and (nth(&raw, stop) /= '\n') do
+                                stop := stop + (1 : Index);
+                            end while;
+                            copyGpuLineName(&~out, &raw, start, stop, vendor);
+                            ok := true;
+                            pos := n;
+                        else
+                            while (pos < n) and (nth(&raw, pos) /= '\n') do
+                                pos := pos + (1 : Index);
+                            end while;
+                            if pos < n then
+                                pos := pos + (1 : Index);
+                            end if;
+                        end if;
+                    end if;
+                end while;
+            end if;
+        end if;
+        destroyByteBuf(raw);
+        return ok;
+    end;
+
+    generic [R: Region]
+    function parseUnsignedPrefix(buf: &[ByteBuf, R]): Option[Index] is
+        let n: Index := length(buf);
+        var pos: Index := 0 : Index;
+        var value: Index := 0 : Index;
+        var saw_digit: Bool := false;
+        while pos < n do
+            let byte: Nat8 := nth(buf, pos);
+            if (byte >= '0') and (byte <= '9') then
+                saw_digit := true;
+                value := (value * (10 : Index)) + digitIndex(byte);
+                pos := pos + (1 : Index);
+            else
+                if saw_digit then
+                    return Some(value => value);
+                else
+                    return None();
+                end if;
+            end if;
+        end while;
+        if saw_digit then
+            return Some(value => value);
+        else
+            return None();
+        end if;
+    end;
+
+    generic [R: Region]
+    function findNumberAfterKey(buf: &[ByteBuf, R], key: Span[Nat8, Static]): Option[Index] is
+        let n: Index := length(buf);
+        let key_len: Index := spanLength(key);
+        if key_len > n then
+            return None();
+        end if;
+        for pos from 0 to n - key_len do
+            if matchesAt(buf, pos, key) then
+                var i: Index := pos + key_len;
+                var value: Index := 0 : Index;
+                var saw_digit: Bool := false;
+                while i < n do
+                    let byte: Nat8 := nth(buf, i);
+                    if (byte = ' ') or (byte = '\t') then
+                        i := i + (1 : Index);
+                    else if (byte >= '0') and (byte <= '9') then
+                        saw_digit := true;
+                        value := (value * (10 : Index)) + digitIndex(byte);
+                        i := i + (1 : Index);
+                    else
+                        if saw_digit then
+                            return Some(value => value);
+                        else
+                            return None();
+                        end if;
+                    end if;
+                end while;
+                if saw_digit then
+                    return Some(value => value);
+                else
+                    return None();
+                end if;
+            end if;
+        end for;
+        return None();
+    end;
+
+    generic [R: Region]
+    function appendTwoDigits(out: &![ByteBuf, R], value: Index): Unit is
+        if value < (10 : Index) then
+            appendByte(&~out, '0');
+        end if;
+        appendIndexDecimal(&~out, value);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function appendGiB2(out: &![ByteBuf, R], kib: Index): Unit is
+        let hundredths: Index := ((kib * (100 : Index)) + (524288 : Index)) / (1048576 : Index);
+        appendIndexDecimal(&~out, hundredths / (100 : Index));
+        appendByte(&~out, '.');
+        appendTwoDigits(&~out, rem(hundredths, (100 : Index)));
+        appendSpan(&~out, " GiB");
+        return nil;
+    end;
+
+    function cstringLength(ptr: Pointer[Nat8]): Index is
+        var len: Index := 0 : Index;
+        while load(positiveOffset(ptr, len)) /= (0 : Nat8) do
+            len := len + (1 : Index);
+        end while;
+        return len;
+    end;
+
+    function cstringStartsWithDot(ptr: Pointer[Nat8]): Bool is
+        return load(ptr) = '.';
+    end;
+
+    function cstringEquals(ptr: Pointer[Nat8], lit: Span[Nat8, Static]): Bool is
+        let n: Index := cstringLength(ptr);
+        if n /= spanLength(lit) then
+            return false;
+        end if;
+        if n > (0 : Index) then
+            for i from 0 to n - 1 do
+                if load(positiveOffset(ptr, i)) /= lit[i] then
+                    return false;
+                end if;
+            end for;
+        end if;
+        return true;
+    end;
+
+    function cstringEndsWith(ptr: Pointer[Nat8], lit: Span[Nat8, Static]): Bool is
+        let n: Index := cstringLength(ptr);
+        let m: Index := spanLength(lit);
+        if m > n then
+            return false;
+        end if;
+        if m > (0 : Index) then
+            for i from 0 to m - 1 do
+                if load(positiveOffset(ptr, (n - m) + i)) /= lit[i] then
+                    return false;
+                end if;
+            end for;
+        end if;
+        return true;
+    end;
+
+    function isShellName(ptr: Pointer[Nat8]): Bool is
+        if cstringEquals(ptr, "bash") then
+            return true;
+        else if cstringEquals(ptr, "zsh") then
+            return true;
+        else if cstringEquals(ptr, "fish") then
+            return true;
+        else if cstringEquals(ptr, "sh") then
+            return true;
+        else
+            return false;
+        end if;
+    end;
+
+    generic [R: Region]
+    function buildProcPath(out: &![ByteBuf, R], pid: Index, tail: Span[Nat8, Static]): Unit is
+        assignSpan(&~out, "/proc/");
+        appendIndexDecimal(&~out, pid);
+        appendSpan(&~out, tail);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function parseProcStatParentPid(buf: &[ByteBuf, R]): Option[Index] is
+        let n: Index := length(buf);
+        if n = (0 : Index) then
+            return None();
+        end if;
+        var pos: Index := n;
+        var found: Bool := false;
+        while (pos > (0 : Index)) and (not found) do
+            pos := pos - (1 : Index);
+            if nth(buf, pos) = ')' then
+                found := true;
+                pos := pos + (1 : Index);
+            end if;
+        end while;
+        if not found then
+            return None();
+        end if;
+        if (pos + (2 : Index)) >= n then
+            return None();
+        end if;
+        pos := pos + (2 : Index);
+        while (pos < n) and (nth(buf, pos) = ' ') do
+            pos := pos + (1 : Index);
+        end while;
+        var value: Index := 0 : Index;
+        var saw_digit: Bool := false;
+        while pos < n do
+            let byte: Nat8 := nth(buf, pos);
+            if (byte >= '0') and (byte <= '9') then
+                saw_digit := true;
+                value := (value * (10 : Index)) + digitIndex(byte);
+                pos := pos + (1 : Index);
+            else
+                if saw_digit then
+                    return Some(value => value);
+                else
+                    return None();
+                end if;
+            end if;
+        end while;
+        if saw_digit then
+            return Some(value => value);
+        else
+            return None();
+        end if;
+    end;
+
+    function countDirHandle(dir: Pointer[Nat8]): Index is
+        var count: Index := 0 : Index;
+        var reading: Bool := true;
+        while reading do
+            case nullCheck(readdir(dir)) of
+                when Some(value as ent: Pointer[Nat8]) do
+                    if not cstringStartsWithDot(direntName(ent)) then
+                        count := count + (1 : Index);
+                    end if;
+                when None do
+                    reading := false;
+            end case;
+        end while;
+        return count;
+    end;
+
+    function countDir(path: Span[Nat8, Static]): Index is
+        case nullCheck(opendir(path)) of
+            when Some(value as dir: Pointer[Nat8]) do
+                let count: Index := countDirHandle(dir);
+                closedir(dir);
+                return count;
+            when None do
+                return 0 : Index;
+        end case;
+    end;
+
+    function countDirPtr(path: Pointer[Nat8]): Index is
+        case nullCheck(opendirPtr(path)) of
+            when Some(value as dir: Pointer[Nat8]) do
+                let count: Index := countDirHandle(dir);
+                closedir(dir);
+                return count;
+            when None do
+                return 0 : Index;
+        end case;
+    end;
+
+    function countDpkg(): Index is
+        case nullCheck(opendir("/var/lib/dpkg/info")) of
+            when Some(value as dir: Pointer[Nat8]) do
+                var count: Index := 0 : Index;
+                var reading: Bool := true;
+                while reading do
+                    case nullCheck(readdir(dir)) of
+                        when Some(value as ent: Pointer[Nat8]) do
+                            let name: Pointer[Nat8] := direntName(ent);
+                            if (not cstringStartsWithDot(name)) and cstringEndsWith(name, ".list") then
+                                count := count + (1 : Index);
+                            end if;
+                        when None do
+                            reading := false;
+                    end case;
+                end while;
+                closedir(dir);
+                return count;
+            when None do
+                return 0 : Index;
+        end case;
+    end;
+
+    function countNeedle(path: Span[Nat8, Static], needle: Span[Nat8, Static]): Index is
+        var raw: ByteBuf := makeByteBuf(65536 : Index);
+        var count: Index := 0 : Index;
+        if readFileFast(path, &!raw) then
+            let n: Index := spanLength(needle);
+            if (n > (0 : Index)) and (n <= length(&raw)) then
+                for pos from 0 to length(&raw) - n do
+                    if matchesAt(&raw, pos, needle) then
+                        count := count + (1 : Index);
+                    end if;
+                end for;
+            end if;
+        end if;
+        destroyByteBuf(raw);
+        return count;
+    end;
+
+    function countNeedlePtr(path: Pointer[Nat8], needle: Span[Nat8, Static]): Index is
+        var raw: ByteBuf := makeByteBuf(65536 : Index);
+        var count: Index := 0 : Index;
+        if readFilePtrFast(path, &!raw) then
+            let n: Index := spanLength(needle);
+            if (n > (0 : Index)) and (n <= length(&raw)) then
+                for pos from 0 to length(&raw) - n do
+                    if matchesAt(&raw, pos, needle) then
+                        count := count + (1 : Index);
+                    end if;
+                end for;
+            end if;
+        end if;
+        destroyByteBuf(raw);
+        return count;
+    end;
+
+    generic [R: Region]
+    function appendPackageCount(out: &![ByteBuf, R], need_sep: Bool, count: Index, manager: Span[Nat8, Static]): Unit is
+        if count > (0 : Index) then
+            if need_sep then
+                appendSpan(&~out, ", ");
+            end if;
+            appendIndexDecimal(&~out, count);
+            appendSpan(&~out, " (");
+            appendSpan(&~out, manager);
+            appendByte(&~out, ')');
+        end if;
+        return nil;
+    end;
+
+    generic [R: Region]
+    function getDistroAndType(out: &![ByteBuf, R]): SystemType is
+        var file: ByteBuf := makeByteBuf(1024 : Index);
+        var ty: SystemType := OtherMode();
+        if readFileFast("/etc/os-release", &!file) then
+            ty := detectType(&file);
+            if not copyPrettyName(&~out, &file) then
+                assignLinux(&~out);
+            end if;
+        else
+            assignLinux(&~out);
+        end if;
+        destroyByteBuf(file);
+        if (access("/bedrock", f_ok) = (0 : Int32)) and isOther(ty) then
+            return BedrockMode();
+        else
+            return ty;
+        end if;
+    end;
+
+    generic [R: Region]
+    function getKernel(out: &![ByteBuf, R]): Unit is
+        var raw: ByteBuf := makeByteBuf(utsname_size);
+        if uname(data(&raw)) = (0 : Int32) then
+            assignCString(&~out, positiveOffset(data(&raw), utsname_release_offset));
+        else
+            assignUnknown(&~out);
+        end if;
+        destroyByteBuf(raw);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function getUptime(out: &![ByteBuf, R]): Unit is
+        var raw: ByteBuf := makeByteBuf(64 : Index);
+        if readFileFast("/proc/uptime", &!raw) then
+            case parseUnsignedPrefix(&raw) of
+                when Some(value as secs: Index) do
+                    let mins: Index := secs / (60 : Index);
+                    let hours: Index := mins / (60 : Index);
+                    let days: Index := hours / (24 : Index);
+                    assignSpan(&~out, "");
+                    if days > (0 : Index) then
+                        appendIndexDecimal(&~out, days);
+                        appendByte(&~out, 'd');
+                        appendByte(&~out, ' ');
+                        appendIndexDecimal(&~out, rem(hours, (24 : Index)));
+                        appendByte(&~out, 'h');
+                        appendByte(&~out, ' ');
+                        appendIndexDecimal(&~out, rem(mins, (60 : Index)));
+                        appendByte(&~out, 'm');
+                    else
+                        appendIndexDecimal(&~out, hours);
+                        appendByte(&~out, 'h');
+                        appendByte(&~out, ' ');
+                        appendIndexDecimal(&~out, rem(mins, (60 : Index)));
+                        appendByte(&~out, 'm');
+                    end if;
+                when None do
+                    assignUnknown(&~out);
+            end case;
+        else
+            assignUnknown(&~out);
+        end if;
+        destroyByteBuf(raw);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function getMemory(out: &![ByteBuf, R]): Unit is
+        var raw: ByteBuf := makeByteBuf(2048 : Index);
+        if readFileFast("/proc/meminfo", &!raw) then
+            case findNumberAfterKey(&raw, "MemTotal:") of
+                when Some(value as total: Index) do
+                    case findNumberAfterKey(&raw, "MemAvailable:") of
+                        when Some(value as available: Index) do
+                            let used: Index := total - available;
+                            assignSpan(&~out, "");
+                            appendGiB2(&~out, used);
+                            appendSpan(&~out, " / ");
+                            appendGiB2(&~out, total);
+                        when None do
+                            assignUnknown(&~out);
+                    end case;
+                when None do
+                    assignUnknown(&~out);
+            end case;
+        else
+            assignUnknown(&~out);
+        end if;
+        destroyByteBuf(raw);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function getWm(out: &![ByteBuf, R]): Unit is
+        case nullCheck(getenv("XDG_CURRENT_DESKTOP")) of
+            when Some(value as ptr: Pointer[Nat8]) do
+                assignCString(&~out, ptr);
+            when None do
+                case nullCheck(getenv("DESKTOP_SESSION")) of
+                    when Some(value as ptr: Pointer[Nat8]) do
+                        assignCString(&~out, ptr);
+                    when None do
+                        assignUnknown(&~out);
+                end case;
+        end case;
+        return nil;
+    end;
+
+    generic [R: Region]
+    function getTerminal(out: &![ByteBuf, R]): Unit is
+        case nullCheck(getenv("TERM_PROGRAM")) of
+            when Some(value as ptr: Pointer[Nat8]) do
+                assignCString(&~out, ptr);
+            when None do
+                case toIndex(getppid()) of
+                    when Some(value as ppid: Index) do
+                        var path: ByteBuf := makeByteBuf(64 : Index);
+                        var proc: ByteBuf := makeByteBuf(256 : Index);
+                        buildProcPath(&!path, ppid, "/comm");
+                        if readFilePtrFast(data(&path), &!proc) then
+                            if commIsShell(&proc) then
+                                buildProcPath(&!path, ppid, "/stat");
+                                if readFilePtrFast(data(&path), &!proc) then
+                                    case parseProcStatParentPid(&proc) of
+                                        when Some(value as pppid: Index) do
+                                            buildProcPath(&!path, pppid, "/comm");
+                                            if readFilePtrFast(data(&path), &!proc) then
+                                                assignLine(&~out, &proc);
+                                            else
+                                                assignUnknown(&~out);
+                                            end if;
+                                        when None do
+                                            assignUnknown(&~out);
+                                    end case;
+                                else
+                                    assignUnknown(&~out);
+                                end if;
+                            else
+                                assignLine(&~out, &proc);
+                            end if;
+                        else
+                            case nullCheck(getenv("TERM")) of
+                                when Some(value as ptr: Pointer[Nat8]) do
+                                    assignCString(&~out, ptr);
+                                when None do
+                                    assignUnknown(&~out);
+                                end case;
+                        end if;
+                        destroyByteBuf(proc);
+                        destroyByteBuf(path);
+                    when None do
+                        case nullCheck(getenv("TERM")) of
+                            when Some(value as ptr: Pointer[Nat8]) do
+                                assignCString(&~out, ptr);
+                            when None do
+                                assignUnknown(&~out);
+                        end case;
+                end case;
+        end case;
+        return nil;
+    end;
+
+    generic [R: Region]
+    function getShell(out: &![ByteBuf, R]): Unit is
+        case nullCheck(getenv("SHELL")) of
+            when Some(value as ptr: Pointer[Nat8]) do
+                assignBasename(&~out, ptr);
+            when None do
+                assignUnknown(&~out);
+        end case;
+        return nil;
+    end;
+
+    generic [R: Region]
+    function getPackages(out: &![ByteBuf, R], ty: SystemType): Unit is
+        let pacman: Index := countDir("/var/lib/pacman/local");
+        let dpkg: Index := countDpkg();
+        var nix: Index := countNeedle("/nix/var/nix/profiles/default/manifest.json", "\"active\":true");
+        nix := nix + countNeedle("/run/current-system/sw/manifest.json", "\"active\":true");
+        var flatpak: Index := countDir("/var/lib/flatpak/app");
+        let snap: Index := countDir("/var/lib/snapd/snaps");
+        case ty of
+            when GentooMode do
+                case nullCheck(opendir("/var/db/pkg")) of
+                    when Some(value as dir: Pointer[Nat8]) do
+                        var count: Index := 0 : Index;
+                        var path: ByteBuf := makeByteBuf(1024 : Index);
+                        var reading: Bool := true;
+                        while reading do
+                            case nullCheck(readdir(dir)) of
+                                when Some(value as ent: Pointer[Nat8]) do
+                                    let name: Pointer[Nat8] := direntName(ent);
+                                    if (not cstringStartsWithDot(name)) and (direntType(ent) = (4 : Nat8)) then
+                                        assignSpan(&!path, "/var/db/pkg/");
+                                        appendCString(&!path, name);
+                                        count := count + countDirPtr(data(&path));
+                                    end if;
+                                when None do
+                                    reading := false;
+                            end case;
+                        end while;
+                        closedir(dir);
+                        destroyByteBuf(path);
+                        appendIndexDecimal(&~out, count);
+                        appendSpan(&~out, " (emerge)");
+                        return nil;
+                    when None do
+                        skip;
+                end case;
+            when BedrockMode do
+                skip;
+            when CachyMode do
+                skip;
+            when OtherMode do
+                skip;
+        end case;
+        case nullCheck(getenv("HOME")) of
+            when Some(value as home: Pointer[Nat8]) do
+                var path: ByteBuf := makeByteBuf(1024 : Index);
+                assignCString(&!path, home);
+                appendSpan(&!path, "/.local/share/flatpak/app");
+                flatpak := flatpak + countDirPtr(data(&path));
+                assignCString(&!path, home);
+                appendSpan(&!path, "/.nix-profile/manifest.json");
+                nix := nix + countNeedlePtr(data(&path), "\"active\":true");
+                if nix = (0 : Index) then
+                    assignCString(&!path, home);
+                    appendSpan(&!path, "/.nix-profile/manifest.nix");
+                    nix := nix + countNeedlePtr(data(&path), "name = \"");
+                end if;
+                assignCString(&!path, home);
+                appendSpan(&!path, "/.local/state/nix/profiles/home-manager/manifest.json");
+                nix := nix + countNeedlePtr(data(&path), "\"active\":true");
+                destroyByteBuf(path);
+            when None do
+                skip;
+        end case;
+        assignSpan(&~out, "");
+        var have_any: Bool := false;
+        appendPackageCount(&~out, have_any, pacman, "pacman");
+        if pacman > (0 : Index) then
+            have_any := true;
+        end if;
+        appendPackageCount(&~out, have_any, dpkg, "dpkg");
+        if dpkg > (0 : Index) then
+            have_any := true;
+        end if;
+        appendPackageCount(&~out, have_any, flatpak, "flatpak");
+        if flatpak > (0 : Index) then
+            have_any := true;
+        end if;
+        appendPackageCount(&~out, have_any, snap, "snap");
+        if snap > (0 : Index) then
+            have_any := true;
+        end if;
+        appendPackageCount(&~out, have_any, nix, "nix");
+        if nix > (0 : Index) then
+            have_any := true;
+        end if;
+        if not have_any then
+            assignUnknown(&~out);
+        end if;
+        return nil;
+    end;
+
+    generic [R: Region]
+    function getCpu(out: &![ByteBuf, R]): Unit is
+        var raw: ByteBuf := makeByteBuf(65536 : Index);
+        var name: ByteBuf := makeByteBuf(256 : Index);
+        var freq: ByteBuf := makeByteBuf(64 : Index);
+        var found_name: Bool := false;
+        if readFileFast("/proc/cpuinfo", &!raw) then
+            if copyFieldValueAfterKey(&!name, &raw, "model name") then
+                found_name := true;
+            else if copyFieldValueAfterKey(&!name, &raw, "Hardware") then
+                found_name := true;
+            else if copyFieldValueAfterKey(&!name, &raw, "Processor") then
+                found_name := true;
+            end if;
+            if found_name then
+                cleanCpuModel(&~out, &name);
+                appendSpan(&~out, " (");
+                case toIndex(getNprocs()) of
+                    when Some(value as threads: Index) do
+                        appendIndexDecimal(&~out, threads);
+                    when None do
+                        appendByte(&~out, '?');
+                end case;
+                appendByte(&~out, ')');
+                if readFileFast("/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq", &!freq) then
+                    case parseUnsignedPrefix(&freq) of
+                        when Some(value as khz: Index) do
+                            let hundredths: Index := (khz + (5000 : Index)) / (10000 : Index);
+                            appendSpan(&~out, " @ ");
+                            appendIndexDecimal(&~out, hundredths / (100 : Index));
+                            appendByte(&~out, '.');
+                            appendTwoDigits(&~out, rem(hundredths, (100 : Index)));
+                            appendSpan(&~out, " GHz");
+                        when None do
+                            skip;
+                    end case;
+                end if;
+            else
+                assignUnknown(&~out);
+            end if;
+        else
+            assignUnknown(&~out);
+        end if;
+        destroyByteBuf(freq);
+        destroyByteBuf(name);
+        destroyByteBuf(raw);
+        return nil;
+    end;
+
+    generic [R: Region]
+    function getGpu(out: &![ByteBuf, R]): Unit is
+        var path: ByteBuf := makeByteBuf(128 : Index);
+        var raw: ByteBuf := makeByteBuf(64 : Index);
+        var vendor: Index := 0 : Index;
+        var device: Index := 0 : Index;
+        var card: Index := 0 : Index;
+        while (card < (10 : Index)) and (vendor = (0 : Index)) do
+            buildDrmPath(&!path, card, "/device/vendor");
+            if readFilePtrFast(data(&path), &!raw) then
+                case parseHexPrefix(&raw) of
+                    when Some(value as parsed: Index) do
+                        vendor := parsed;
+                    when None do
+                        skip;
+                end case;
+                if vendor /= (0 : Index) then
+                    buildDrmPath(&!path, card, "/device/device");
+                    if readFilePtrFast(data(&path), &!raw) then
+                        case parseHexPrefix(&raw) of
+                            when Some(value as parsed: Index) do
+                                device := parsed;
+                            when None do
+                                device := 0 : Index;
+                        end case;
+                    end if;
+                end if;
+            end if;
+            card := card + (1 : Index);
+        end while;
+        if (vendor = (0 : Index)) or (device = (0 : Index)) then
+            assignUnknown(&~out);
+        else if lookupPciName(&~out, vendor, device) then
+            skip;
+        else if vendor = (4318 : Index) then
+            assignSpan(&~out, "NVIDIA GPU 0x");
+            appendHex4(&~out, indexToNat32(device));
+        else if vendor = (4098 : Index) then
+            assignSpan(&~out, "AMD GPU 0x");
+            appendHex4(&~out, indexToNat32(device));
+        else
+            assignSpan(&~out, "GPU 0x");
+            appendHex4(&~out, indexToNat32(vendor));
+            appendSpan(&~out, ":0x");
+            appendHex4(&~out, indexToNat32(device));
+        end if;
+        destroyByteBuf(raw);
+        destroyByteBuf(path);
+        return nil;
+    end;
+end module body.

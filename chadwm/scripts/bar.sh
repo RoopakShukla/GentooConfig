@@ -34,10 +34,10 @@ battery() {
 
 }
 
-brightness() {
-  printf "^c$red^   "
-  printf "^c$red^%.0f\n" $(cat /sys/class/backlight/intel_backlight/brightness)
-}
+# brightness() {
+#   printf "^c$red^   "
+#   printf "^c$red^%.0f\n" $(cat /sys/class/backlight/intel_backlight/brightness)
+# }
 
 mem() {
   printf "^c$red^^b$black^  "
@@ -51,6 +51,12 @@ wlan() {
 	esac
 }
 
+cpu_temp() {
+  temp=$(sensors | awk '/Package id 0:/ { print $4 }')
+  printf "^c$black^ ^b$red^ TEMP"
+  printf "^c$red^ ^b$grey^ $temp"
+}
+
 clock() {
 	printf "^c$black^ ^b$darkblue^ 󱑆 "
 	printf "^c$black^^b$blue^ $(date '+%a, %H:%M')  "
@@ -61,5 +67,5 @@ while true; do
   [ $interval = 0 ] || [ $(($interval % 3600)) = 0 ] && updates=$(pkg_updates)
   interval=$((interval + 1))
 
-  sleep 1 && xsetroot -name "$updates  $(cpu)  $(battery)  $(mem)  $(wlan)  $(clock)" #removed updates part, just add - $updates back
+  sleep 1 && xsetroot -name "$updates  $(cpu) $(cpu_temp)  $(battery)  $(mem)  $(wlan)  $(clock)"
 done

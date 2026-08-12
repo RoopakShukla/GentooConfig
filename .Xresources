@@ -10,7 +10,7 @@ st.borderpx: 5
 
 !-- values between 0.1  - 1.0 --! 
 
-st.alpha: 0.95 
+st.alpha: 0.95
 st.font:           VictorMono NFP Semibold:style:Semibold:pixelsize=20
 
 #define base00 #282c34

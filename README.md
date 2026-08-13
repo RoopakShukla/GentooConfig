@@ -1,5 +1,10 @@
 The stuff ill be using in my gentoo installation 
 
+
+## Preview
+![Preview](preview.png)
+
+
 ### Prerequisites
 ```
  - x11-base/xlibre-server

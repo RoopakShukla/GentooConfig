@@ -33,7 +33,15 @@ The stuff ill be using in my gentoo installation
  - app-misc/brightnessctl          (OPTIONAL)
 ```
 
+### Steps
+```
+git clone https://github.com/RoopakShukla/GentooConfig && cd GentooConfig
+chmod +x move.sh 
+./move.sh
+```
 
+#### Patches
+- [systray](https://dwm.suckless.org/patches/systray/)
 
 #### Credits
 - st - github.com/siduck

@@ -22,6 +22,7 @@ The stuff ill be using in my gentoo installation
  - x11-misc/xclip
 
  - media-gfx/feh
+ - media-gfx/flameshot
 
  - app-editors/neovim
  - sys-apps/ripgrep

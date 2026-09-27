@@ -1,7 +1,6 @@
 #!/bin/sh
 
-slstatus &
-feh --bg-fill ~/.config/suckless/dwm/wallpapers/main.png
+feh --bg-fill ~/wallpapers/void.png
 xset r rate 200 50 &
 
-exec dwm
+exec bspwm

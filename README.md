@@ -1,14 +1,21 @@
-The stuff ill be using in my gentoo installation 
+The stuff ill be using in any linux installation 
 
 
 ## Preview
-![Preview](preview.png)
+### BSPWM
+![Preview](preview_bspwm.png)
 
+### DWM
+![Preview](preview_dwm.png)
 
 ### Prerequisites
+
+<details>
+<summary> Gentoo </summary>
+
 ```
  - x11-base/xlibre-server
- - x11-apps/xrdb                   (OPTIONAL)
+ - x11-apps/xrdb             (OPTIONAL)           
  - x11-apps/xsetroot
  - x11-apps/xrandr
  - x11-apps/xset
@@ -26,13 +33,20 @@ The stuff ill be using in my gentoo installation
 
  - app-editors/neovim
  - sys-apps/ripgrep
+
+ - media-fonts/nerdfonts victormono
+ - app-misc/brightnessctl   (OPTIONAL)
 ```
 
-#### GURU Overlay
+</details>
+
+<details>
+<summary> Void <3 </summary>
+
 ```
- - media-fonts/nerdfonts victormono
- - app-misc/brightnessctl          (OPTIONAL)
+Will be updated soon.
 ```
+</details>
 
 ### Steps
 ```
@@ -41,16 +55,12 @@ chmod +x move.sh
 ./move.sh
 ```
 
-#### Patches
-- [systray](https://dwm.suckless.org/patches/systray/)
-
 #### Credits
-- st - github.com/siduck
 - bfetch - github.com/Mjoyufull/bfetch
 - NvChad - github.com/NvChad (also from siduck)
 - .vim - tonybtw's tutorial on YouTube
 
-.wallpapers from:
+wallpapers from:
 - github.com/octagony/dwm-config-files
 - wallhaven
 

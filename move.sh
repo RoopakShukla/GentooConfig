@@ -1,21 +1,13 @@
-#!/bin/sh
-
-echo "Okkaayyyyy lets go"
-
-mv .vim ~/.config/.vim
-mv bfetch ~/.config/bfetch
-mv dunst ~/.config/dunst 
-mv suckless ~/.config/suckless
-mv fastfetch ~/.config/fastfetch 
-mv nvim ~/.config/nvim 
-mv rofi ~/.config/rofi 
-
+mv .vimrc ~/.vimrc
 mv .xinitrc ~/.xinitrc
-mv .vimrc ~/.vimrc 
 
+mv ./bspwm/bspwm ~/.config/bspwm
+mv ./bspwm/polybar ~/.config/polybar
+mv ./bspwm/sxhkd ~/.config/sxhkd
+mv ./kitty ~/.config/kitty
+mv nvim ~/.config/nvim
+mv st ~/.config/st
+mv .vim ~/.config/.vim
+mv ./wallpapers ~/wallpapers
 
-echo "Yayyyy, we done moved everything successfully"
-sleep 1
-echo "Now you just have to go and build dwm, slstatus & st"
-sleep 0.5
-echo "(im not doing allat.)"
+echo "Done!!"

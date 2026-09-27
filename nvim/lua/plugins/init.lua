@@ -1,11 +1,9 @@
 return {
   {
     "stevearc/conform.nvim",
-    -- event = 'BufWritePre', -- uncomment for format on save
     opts = require "configs.conform",
   },
 
-  -- These are some examples, uncomment them if you want to see them work!
   {
     "neovim/nvim-lspconfig",
     config = function()
@@ -13,16 +11,37 @@ return {
     end,
   },
 
-  -- test new blink
-  -- { import = "nvchad.blink.lazyspec" },
+  {
+    "mrcjkb/rustaceanvim",
+    version = "^3",
+    ft = { "rust" },
+    config = function(_, _)
+      vim.g.rustaceanvim = {
+        server = {
+          on_attach = function(client, buffer)
+            require("core.utils").load_mappings("lspconfig", { buffer = buffer })
+            require("nvchad.signature").setup(client)
+          end,
+        },
+      }
+    end,
+  },
 
-  -- {
-  -- 	"nvim-treesitter/nvim-treesitter",
-  -- 	opts = {
-  -- 		ensure_installed = {
-  -- 			"vim", "lua", "vimdoc",
-  --      "html", "css"
-  -- 		},
-  -- 	},
-  -- },
+  {
+    "nvim-treesitter/nvim-treesitter",
+    opts = {
+      ensure_installed = {
+        "vim",
+        "lua",
+        "vimdoc",
+        "html",
+        "css",
+        "c",
+        "cpp",
+        "rust",
+        "python",
+        "asm"
+      },
+    },
+  },
 }

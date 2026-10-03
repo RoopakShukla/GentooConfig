@@ -1,0 +1,13 @@
+theme = "dark_plus"
+# base16_Default
+# base16_terminal / transparent
+# dark_plus
+
+[editor]
+line-number = "relative"
+clipboard-provider = "x-clip"
+bufferline = "multiple"
+cursorline = true
+auto-format = false
+completion-timeout = 500
+

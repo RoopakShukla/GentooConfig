@@ -48,12 +48,6 @@ Will be updated soon.
 ```
 </details>
 
-### Steps
-```
-git clone https://github.com/RoopakShukla/GentooConfig && cd GentooConfig
-chmod +x move.sh 
-./move.sh
-```
 
 #### Credits
 - bfetch - github.com/Mjoyufull/bfetch

@@ -1,3 +1,0 @@
-### Patches Patched
-
-- Ligatures

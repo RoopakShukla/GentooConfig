@@ -50,9 +50,8 @@ Will be updated soon.
 
 
 #### Credits
-- bfetch - github.com/Mjoyufull/bfetch
-- NvChad - github.com/NvChad (also from siduck)
-- .vim - tonybtw's tutorial on YouTube
+- tmux - codeberg.org/theidioticdev/void-btw
+- vis - https://git.symlinx.net/daccfiles
 
 wallpapers from:
 - github.com/octagony/dwm-config-files

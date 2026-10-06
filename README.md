@@ -48,6 +48,12 @@ Will be updated soon.
 ```
 </details>
 
+### Steps
+```
+ git clone https://www.github.com/RoopakShukla/GentooConfig ~/GentooConfig
+ chmod +x symlink.sh
+ ./symlink.sh
+```
 
 #### Credits
 - tmux - codeberg.org/theidioticdev/void-btw

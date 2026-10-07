@@ -1,26 +1,26 @@
 -- base16-vis (https://github.com/pshevtsov/base16-vis)
 -- by Petr Shevtsov
--- OneDark scheme by Lalit Magant (http://github.com/tilal6991)
+-- Nord scheme by arcticicestudio
 
 local lexers = vis.lexers
 
 local colors = {
-	['base00'] = '#282c34',
-	['base01'] = '#353b45',
-	['base02'] = '#3e4451',
-	['base03'] = '#545862',
-	['base04'] = '#565c64',
-	['base05'] = '#abb2bf',
-	['base06'] = '#b6bdca',
-	['base07'] = '#c8ccd4',
-	['base08'] = '#e06c75',
-	['base09'] = '#d19a66',
-	['base0A'] = '#e5c07b',
-	['base0B'] = '#98c379',
-	['base0C'] = '#56b6c2',
-	['base0D'] = '#61afef',
-	['base0E'] = '#c678dd',
-	['base0F'] = '#be5046',
+	['base00'] = '#2E3440',
+	['base01'] = '#3B4252',
+	['base02'] = '#434C5E',
+	['base03'] = '#4C566A',
+	['base04'] = '#D8DEE9',
+	['base05'] = '#E5E9F0',
+	['base06'] = '#ECEFF4',
+	['base07'] = '#8FBCBB',
+	['base08'] = '#88C0D0',
+	['base09'] = '#81A1C1',
+	['base0A'] = '#5E81AC',
+	['base0B'] = '#BF616A',
+	['base0C'] = '#D08770',
+	['base0D'] = '#EBCB8B',
+	['base0E'] = '#A3BE8C',
+	['base0F'] = '#B48EAD',
 }
 
 lexers.colors = colors

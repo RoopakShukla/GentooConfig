@@ -4,14 +4,12 @@ require('vis')
 require('plugins/vis-commentary')()
 local panel = require('plugins/vis-paw')
 local color = require('plugins/colorizer')
-local tasks = require('plugins/vis-tasks')
 local autoclose = require('plugins/vis-autoclose')
 local completefilename = require('plugins/complete-filename')
 local lsp = require('plugins/vis-lspc')
 
 vis.events.subscribe(vis.events.INIT, function()
-	vis:command('set theme base16-default-dark')
-	tasks.setup()
+	vis:command('set theme neon-void')
 end)
 
 vis.events.subscribe(vis.events.WIN_OPEN, function(win)
@@ -25,7 +23,7 @@ end)
 
 --        plugins conf        --
 panel.config = {
-  style_normal = 'fore:black,back:blue',
+  style_normal = 'fore:white,back:blue',
   style_visual = 'fore:black,back:yellow',
   style_insert = 'fore:black,back:green',
   style_replace = 'fore:black,back:magenta',

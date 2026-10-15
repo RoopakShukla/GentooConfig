@@ -5,9 +5,6 @@ The stuff ill be using in any linux installation
 ### BSPWM
 ![Preview](preview_bspwm.png)
 
-### DWM
-![Preview](preview_dwm.png)
-
 ### Prerequisites
 
 <details>

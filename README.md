@@ -54,7 +54,6 @@ Will be updated soon.
 
 #### Credits
 - tmux - codeberg.org/theidioticdev/void-btw
-- vis - https://git.symlinx.net/daccfiles
 
 wallpapers from:
 - github.com/octagony/dwm-config-files

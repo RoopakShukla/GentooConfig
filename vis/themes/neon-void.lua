@@ -45,14 +45,14 @@ lexers.STYLE_LINENUMBER = 'fore:'..colors.comment..',back:'..colors.bg
 lexers.STYLE_LINENUMBER_CURSOR = 'fore:'..colors.yellow..',back:'..colors.bg..',bold'
 
 --            Reverse the Colors          --
-lexers.STYLE_CURSOR = 'reverse'
-lexers.STYLE_CURSOR_PRIMARY = 'reverse'
+-- lexers.STYLE_CURSOR = 'reverse'
+-- lexers.STYLE_CURSOR_PRIMARY = 'reverse'
 
 --               OR               -- 
 
 --           CLASSIC              --
--- lexers.STYLE_CURSOR = 'fore:'..colors.bg..',back:'..colors.fg
--- lexers.STYLE_CURSOR_PRIMARY = 'fore:'..colors.bg..',back:'..colors.fg
+lexers.STYLE_CURSOR = 'fore:'..colors.bg..',back:'..colors.fg
+lexers.STYLE_CURSOR_PRIMARY = 'fore:'..colors.bg..',back:'..colors.fg
 
 
 --           You can set a custom color of cursor here        --

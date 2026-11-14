@@ -7,6 +7,7 @@ local color = require('plugins/colorizer')
 local autoclose = require('plugins/vis-autoclose')
 local completefilename = require('plugins/complete-filename')
 local lsp = require('plugins/vis-lspc')
+local viscosity = require('plugins/viscosity')
 
 vis.events.subscribe(vis.events.INIT, function()
 	vis:command('set theme neon-void')
@@ -18,6 +19,7 @@ vis.events.subscribe(vis.events.WIN_OPEN, function(win)
 	vis:command('set expandtab off')
 	vis:command('set showtabs false')
 	vis:command('set autoindent on')
+	vis:command('set cursorline on')
 	vis:map(vis.modes.VISUAL," y", '"+y"')
 end)
 
@@ -42,6 +44,9 @@ panel.config = {
     'percent'
   }
 }
+
+viscosity.show_hidden = true
+viscosity.keys.close = '<Escape>'
 
 lsp.highlight_diagnostics = 'line'
 

@@ -1,4 +1,5 @@
-theme = "dark_plus"
+# theme = "dark_plus"
+theme = "neon-void"
 # base16_Default
 # base16_terminal / transparent
 # dark_plus
@@ -10,4 +11,24 @@ bufferline = "multiple"
 cursorline = true
 auto-format = false
 completion-timeout = 500
+color-modes = true
 
+[editor.statusline]
+left = ["mode", "read-only-indicator"]
+center = ["file-base-name"]
+right = ["diagnostics", "version-control", "file-type"]
+separator = "│"
+mode.normal = "NORMAL"
+mode.insert = "INSERT"
+mode.select = "SELECT"
+diagnostics = ["warning", "error"]
+workspace-diagnostics = ["warning", "error"]
+
+[editor.cursor-shape]
+insert = "bar"
+
+[editor.file-picker]
+hidden = false
+
+[editor.lsp]
+display-inlay-hints = true

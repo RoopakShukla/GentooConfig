@@ -1,0 +1,99 @@
+# neon-void (https://github.com/RoopakShukla/neon-void)
+# Ported from vis to Helix
+
+# Syntax Scopes
+"comment" = { fg = "comment", modifiers = ["italic"] }
+"constant" = "orange"
+"constant.numeric" = "orange"
+"constant.character.escape" = "cyan"
+"string" = "green"
+"string.regexp" = "cyan"
+"string.special" = "magenta"
+
+"variable" = "blue"
+"variable.other.member" = "cyan"
+"variable.parameter" = "blue"
+"function" = { fg = "blue", modifiers = ["italic"] }
+"function.macro" = { fg = "red", modifiers = ["italic"] }
+
+"keyword" = { fg = "purple", modifiers = ["bold"] }
+"keyword.directive" = { fg = "red", modifiers = ["italic"] }
+"operator" = "pink"
+"punctuation" = "fg"
+
+"type" = { fg = "yellow", modifiers = ["bold", "italic"] }
+"type.builtin" = { fg = "yellow", modifiers = ["bold", "italic"] }
+"constructor" = "yellow"
+"namespace" = "yellow"
+"label" = "yellow"
+"tag" = "magenta"
+"attribute" = "purple"
+
+# Markup / Diff / Diagnostics
+"markup.heading" = { fg = "purple", modifiers = ["bold"] }
+"markup.raw" = "green"
+"markup.link.url" = { fg = "cyan", modifiers = ["underlined"] }
+"markup.bold" = { modifiers = ["bold"] }
+"markup.italic" = { modifiers = ["italic"] }
+
+"diff.plus" = "green"
+"diff.minus" = "red"
+"diff.delta" = "orange"
+
+"error" = { fg = "red", modifiers = ["italic"] }
+"warning" = "orange"
+"info" = "cyan"
+"hint" = "blue"
+"diagnostic.error" = { underline = { color = "red", style = "curl" } }
+"diagnostic.warning" = { underline = { color = "orange", style = "curl" } }
+"diagnostic.info" = { underline = { color = "cyan", style = "curl" } }
+"diagnostic.hint" = { underline = { color = "blue", style = "curl" } }
+
+# UI Elements
+"ui.background" = { fg = "fg", bg = "bg" }
+"ui.background.separator" = { fg = "fg", bg = "bg" }
+"ui.text" = "fg"
+"ui.text.focus" = { fg = "orange", bg = "selection", modifiers = ["bold"] }
+"ui.text.inactive" = "comment"
+
+"ui.cursor" = { fg = "bg", bg = "fg" }
+"ui.cursor.primary" = { fg = "bg", bg = "fg" }
+"ui.cursor.match" = { fg = "yellow", bg = "selection", modifiers = ["bold"] }
+"ui.cursorline.primary" = { bg = "bg_alt" }
+"ui.cursorcolumn.primary" = { bg = "bg_alt" }
+"ui.selection" = { bg = "selection" }
+"ui.selection.primary" = { bg = "selection" }
+
+"ui.linenr" = { fg = "comment", bg = "bg" }
+"ui.linenr.selected" = { fg = "yellow", bg = "bg", modifiers = ["bold"] }
+
+"ui.statusline" = { fg = "fg", bg = "bg_alt" }
+"ui.statusline.inactive" = { fg = "comment", bg = "bg_alt" }
+"ui.statusline.normal" = { fg = "orange", bg = "bg_alt", modifiers = ["bold"] }
+"ui.statusline.insert" = { fg = "green", bg = "bg_alt", modifiers = ["bold"] }
+"ui.statusline.select" = { fg = "purple", bg = "bg_alt", modifiers = ["bold"] }
+
+"ui.popup" = { fg = "fg", bg = "bg_alt" }
+"ui.window" = { fg = "bg_alt", bg = "bg" }
+"ui.help" = { fg = "fg", bg = "bg_alt" }
+"ui.menu" = { fg = "fg", bg = "bg_alt" }
+"ui.menu.selected" = { fg = "orange", bg = "selection", modifiers = ["bold"] }
+"ui.virtual.whitespace" = "bg_alt"
+"ui.virtual.ruler" = { bg = "bg_alt" }
+"ui.virtual.inlay-hint" = { fg = "comment", modifiers = ["italic"] }
+
+[palette]
+bg        = "#000000" # xterm 0
+bg_alt    = "#303030" # xterm 236
+selection = "#4e4e4e" # xterm 239
+comment   = "#808080" # xterm 244
+fg        = "#eeeeee" # xterm 255
+red       = "#ff0000" # xterm 196
+orange    = "#ff8700" # xterm 208
+yellow    = "#ffd700" # xterm 220
+green     = "#5fff00" # xterm 82
+cyan      = "#00ffff" # xterm 51
+blue      = "#00afff" # xterm 39
+purple    = "#af87ff" # xterm 141
+magenta   = "#ff00ff" # xterm 201
+pink      = "#ff5faf" # xterm 205 (STYLE_OPERATOR)

@@ -4,10 +4,10 @@
 
 # terminal emulator
 super + Return
-	kitty
+	st
 
 # program launcher
-super + @space
+super + shift + Return
 	rofi -show drun
 
 

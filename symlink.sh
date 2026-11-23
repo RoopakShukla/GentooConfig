@@ -12,7 +12,7 @@ ln -sf "$HOME/GentooConfig/vis" "$HOME/.config/vis"
 
 ln -sf "$HOME/GentooConfig/bspwm/bspwm" "$HOME/.config/bspwm"
 ln -sf "$HOME/GentooConfig/bspwm/sxhkd" "$HOME/.config/sxhkd"
-ln -sf "$HOME/GentooConfig/polybar" "$HOME/.config/polybar"
+ln -sf "$HOME/GentooConfig/bspwm/polybar" "$HOME/.config/polybar"
 
 echo "All Done :D"
 
